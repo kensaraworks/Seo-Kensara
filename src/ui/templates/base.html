@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}KensaraAI Content Hub{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            surface: {
+              0: '#07070f',
+              1: '#0d0d1a',
+              2: '#111120',
+              3: '#16162a',
+              4: '#1c1c34',
+            },
+            border: {
+              subtle: 'rgba(255,255,255,0.06)',
+              default: 'rgba(255,255,255,0.10)',
+              strong: 'rgba(255,255,255,0.18)',
+            },
+            accent: { DEFAULT: '#6366f1', hover: '#818cf8', muted: 'rgba(99,102,241,0.15)' },
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://unpkg.com/htmx.org@1.9.12" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: #07070f; color: #e2e8f0; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    /* Sidebar */
+    .sidebar { width: 232px; flex-shrink: 0; background: #0d0d1a; border-right: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.45); cursor: pointer; text-decoration: none; transition: all 0.15s ease; margin: 1px 0; }
+    .nav-item:hover { color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.05); }
+    .nav-item.active { color: #fff; background: rgba(99,102,241,0.2); }
+    .nav-item svg { flex-shrink: 0; opacity: 0.75; }
+    .nav-item.active svg { opacity: 1; }
+
+    /* Cards */
+    .card { background: #111120; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 20px; }
+    .card-sm { background: #111120; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 16px; }
+
+    /* Badges */
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; letter-spacing: 0.01em; }
+    .badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+    .badge-pending { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+    .badge-pending::before { background: #f59e0b; }
+    .badge-approved { background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+    .badge-approved::before { background: #22c55e; }
+    .badge-rejected { background: rgba(239,68,68,0.10); color: #f87171; border: 1px solid rgba(239,68,68,0.20); }
+    .badge-rejected::before { background: #ef4444; }
+    .badge-published { background: rgba(99,102,241,0.12); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.25); }
+    .badge-published::before { background: #6366f1; }
+    .badge-draft { background: rgba(100,116,139,0.12); color: #94a3b8; border: 1px solid rgba(100,116,139,0.20); }
+    .badge-draft::before { background: #64748b; }
+    .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+
+    /* Buttons */
+    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s ease; text-decoration: none; white-space: nowrap; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #818cf8; }
+    .btn-ghost { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75); border: 1px solid rgba(255,255,255,0.08); }
+    .btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.10); color: #fff; }
+    .btn-success { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }
+    .btn-success:hover:not(:disabled) { background: rgba(34,197,94,0.25); }
+    .btn-danger { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.20); }
+    .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.22); }
+    .btn-indigo { background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.25); }
+    .btn-indigo:hover:not(:disabled) { background: rgba(99,102,241,0.25); color: #c7d2fe; }
+    .btn-sm { padding: 5px 11px; font-size: 12px; gap: 5px; border-radius: 7px; }
+
+    /* Table */
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th { text-align: left; padding: 12px 16px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.35); border-bottom: 1px solid rgba(255,255,255,0.07); }
+    .table td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+    .table tr:last-child td { border-bottom: none; }
+    .table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* Stat cards */
+    .stat-card { background: #111120; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 20px 24px; }
+    .stat-value { font-size: 28px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+    .stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.35); margin-top: 6px; }
+    .stat-sub { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 4px; }
+
+    /* Section headers */
+    .section-title { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.7); margin-bottom: 14px; }
+
+    /* Code */
+    code { font-size: 11px; font-family: 'SFMono-Regular', 'Fira Code', monospace; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; color: #a5b4fc; }
+
+    /* Textarea */
+    textarea { background: #0d0d1a; border: 1px solid rgba(255,255,255,0.10); border-radius: 8px; color: #c4c9d4; font-size: 12px; font-family: 'SFMono-Regular', 'Fira Code', monospace; padding: 14px; line-height: 1.6; width: 100%; resize: vertical; outline: none; transition: border-color 0.15s; }
+    textarea:focus { border-color: rgba(99,102,241,0.5); }
+
+    /* Input */
+    input[type="number"], select { background: #0d0d1a; border: 1px solid rgba(255,255,255,0.10); border-radius: 7px; color: #e2e8f0; font-size: 13px; padding: 8px 12px; outline: none; transition: border-color 0.15s; }
+    input:focus, select:focus { border-color: rgba(99,102,241,0.5); }
+
+    /* Modal */
+    #preview-modal { display: none; }
+    #preview-modal.open { display: flex; }
+
+    /* Markdown preview */
+    .prose-custom h1 { font-size: 20px; font-weight: 700; color: #fff; margin: 0 0 16px; line-height: 1.3; }
+    .prose-custom h2 { font-size: 15px; font-weight: 600; color: #a5b4fc; margin: 24px 0 10px; }
+    .prose-custom h3 { font-size: 13px; font-weight: 600; color: #cbd5e1; margin: 18px 0 8px; }
+    .prose-custom p { font-size: 13px; color: #94a3b8; line-height: 1.7; margin: 0 0 12px; }
+    .prose-custom ul { padding-left: 20px; margin: 0 0 12px; }
+    .prose-custom li { font-size: 13px; color: #94a3b8; line-height: 1.7; margin-bottom: 4px; }
+    .prose-custom strong { color: #e2e8f0; font-weight: 600; }
+    .prose-custom a { color: #818cf8; text-decoration: underline; }
+    .prose-custom blockquote { border-left: 3px solid #6366f1; padding-left: 14px; margin: 16px 0; color: #64748b; font-style: italic; }
+
+    /* Alert banner */
+    .alert-warning { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.20); border-radius: 10px; padding: 14px 18px; }
+    .alert-info { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.20); border-radius: 10px; padding: 14px 18px; }
+
+    /* Page header */
+    .page-header { padding: 28px 32px 0; }
+    .page-title { font-size: 20px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+    .page-sub { font-size: 13px; color: rgba(255,255,255,0.35); margin-top: 4px; }
+
+    /* Content area */
+    .page-content { padding: 24px 32px 40px; }
+
+    /* Divider */
+    .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 20px 0; }
+
+    /* Pulse dot */
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .pulse-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; animation: pulse 2s ease-in-out infinite; }
+    .pulse-dot.green { background: #22c55e; }
+    .pulse-dot.amber { background: #f59e0b; }
+    .pulse-dot.red { background: #ef4444; }
+
+    /* Shimmer for loading */
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    .loading-text { background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.05) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; color: transparent !important; user-select: none; }
+
+    /* Pill tabs */
+    .tab-group { display: flex; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 9px; padding: 3px; gap: 2px; }
+    .tab { padding: 6px 14px; border-radius: 7px; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.4); cursor: pointer; text-decoration: none; transition: all 0.15s; }
+    .tab:hover { color: rgba(255,255,255,0.7); }
+    .tab.active { background: rgba(99,102,241,0.25); color: #c7d2fe; }
+
+    /* Number badge */
+    .num-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; background: #6366f1; color: #fff; font-size: 10px; font-weight: 700; border-radius: 9px; }
+
+    /* Empty state */
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center; }
+    .empty-icon { width: 48px; height: 48px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+    .empty-title { font-size: 15px; font-weight: 600; color: rgba(255,255,255,0.7); margin-bottom: 6px; }
+    .empty-sub { font-size: 13px; color: rgba(255,255,255,0.3); max-width: 300px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+<div style="display:flex;height:100vh;overflow:hidden;">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <!-- Brand -->
+    <div style="padding:20px 16px 18px;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:#fff;letter-spacing:-0.01em;">KensaraAI</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:1px;">Content Hub</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav style="flex:1;padding:12px 8px;overflow-y:auto;">
+      <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.2);padding:4px 12px 8px;">Main</div>
+      <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
+      </a>
+      <a href="/queue/" class="nav-item {% if active_page == 'queue' %}active{% endif %}">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        Content Queue
+        {% if active_page != 'queue' and total_pending is defined and total_pending > 0 %}
+        <span class="num-badge" style="margin-left:auto;">{{ total_pending }}</span>
+        {% endif %}
+      </a>
+
+      <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.2);padding:16px 12px 8px;">Settings</div>
+      <a href="/schedule/" class="nav-item {% if active_page == 'schedule' %}active{% endif %}">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 3"/></svg>
+        Schedule
+      </a>
+      <a href="/context/" class="nav-item {% if active_page == 'context' %}active{% endif %}">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+        Context
+      </a>
+    </nav>
+
+    <!-- Footer -->
+    <div style="padding:14px 16px;border-top:1px solid rgba(255,255,255,0.06);">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="pulse-dot green"></span>
+        <span style="font-size:11px;color:rgba(255,255,255,0.3);">AI drafts · You decide</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main style="flex:1;overflow-y:auto;background:#07070f;">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<!-- Preview Modal -->
+<div id="preview-modal" style="position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);padding:24px;">
+  <div style="position:relative;width:100%;max-width:740px;max-height:88vh;background:#111120;border:1px solid rgba(255,255,255,0.10);border-radius:16px;display:flex;flex-direction:column;box-shadow:0 25px 80px rgba(0,0,0,0.6);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(255,255,255,0.07);flex-shrink:0;">
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:4px;">Preview</div>
+        <h2 id="modal-title" style="font-size:15px;font-weight:600;color:#fff;margin:0;line-height:1.3;max-width:580px;"></h2>
+      </div>
+      <button onclick="closePreview()" style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.5);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;flex-shrink:0;margin-left:16px;" onmouseover="this.style.background='rgba(255,255,255,0.10)'" onmouseout="this.style.background='rgba(255,255,255,0.06)'">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="modal-body" class="prose-custom" style="overflow-y:auto;padding:24px;flex:1;"></div>
+  </div>
+</div>
+
+<!-- Visual Workflow Modal -->
+<div id="workflow-modal" style="position:fixed;inset:0;z-index:150;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);backdrop-filter:blur(8px);padding:24px;">
+  <div style="position:relative;width:100%;max-width:540px;background:#111120;border:1px solid rgba(255,255,255,0.15);border-radius:16px;box-shadow:0 25px 80px rgba(0,0,0,0.8);padding:32px;">
+    <div style="font-size:18px;font-weight:600;color:#fff;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+      <span>AI Generation Workflow</span>
+      <button id="workflow-close-btn" onclick="closeWorkflowModal()" style="display:none;background:none;border:none;color:#a5b4fc;cursor:pointer;font-size:13px;font-weight:600;">Close & View Draft</button>
+    </div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:24px;">Synthesizing SEO Asset <span style="color:#4ade80;font-weight:600;margin-left:4px;">(Estimated Value: 4 hours of manual labor saved)</span></div>
+    
+    <div id="workflow-steps" style="display:flex;flex-direction:column;gap:12px;">
+      <!-- Steps injected via JS -->
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" style="position:fixed;bottom:24px;right:24px;z-index:100;display:none;">
+  <div id="toast-inner" style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.10);">
+    <span id="toast-icon" style="width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:700;"></span>
+    <span id="toast-msg"></span>
+  </div>
+</div>
+
+<script>
+// Modal
+function openPreview(title, bodyText) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = markdownToHtml(bodyText);
+  document.getElementById('preview-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closePreview() {
+  document.getElementById('preview-modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.getElementById('preview-modal').addEventListener('click', function(e) { if(e.target===this) closePreview(); });
+document.addEventListener('keydown', function(e) { if(e.key==='Escape') closePreview(); });
+
+// Markdown
+function markdownToHtml(md) {
+  if (!md) return '<p style="color:rgba(255,255,255,0.3);font-style:italic;">No content.</p>';
+  let h = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>')
+    .replace(/^&gt; (.+)$/gm,'<blockquote>$1</blockquote>').replace(/^\s*[-*] (.+)$/gm,'<li>$1</li>');
+  h = h.split(/\n\n+/).map(function(b) {
+    if (/^<(h[1-6]|ul|ol|li|blockquote)/.test(b.trim())) return b;
+    if (b.includes('<li>')) return '<ul>'+b+'</ul>';
+    return '<p>'+b.replace(/\n/g,' ')+'</p>';
+  }).join('\n');
+  return h;
+}
+
+// Toast
+function showToast(msg, type) {
+  const config = {
+    success: { bg: '#0f2518', border: 'rgba(34,197,94,0.30)', dot: '#22c55e', text: '#4ade80' },
+    error:   { bg: '#1c0f0f', border: 'rgba(239,68,68,0.25)',  dot: '#ef4444', text: '#f87171' },
+    info:    { bg: '#0f1028', border: 'rgba(99,102,241,0.30)', dot: '#6366f1', text: '#a5b4fc' },
+  };
+  const c = config[type] || config.info;
+  const inner = document.getElementById('toast-inner');
+  const icon = document.getElementById('toast-icon');
+  inner.style.background = c.bg;
+  inner.style.borderColor = c.border;
+  icon.style.background = c.dot;
+  icon.style.color = '#fff';
+  icon.textContent = type==='success' ? '✓' : type==='error' ? '✗' : 'i';
+  document.getElementById('toast-msg').style.color = '#e2e8f0';
+  document.getElementById('toast-msg').textContent = msg;
+  const toast = document.getElementById('toast');
+  toast.style.display = 'block';
+  toast.style.opacity = '1';
+  setTimeout(function() { toast.style.opacity='0'; setTimeout(function(){ toast.style.display='none'; toast.style.opacity='1'; }, 300); }, 3500);
+}
+
+// Approve / Reject
+function approveItem(folder, filename, rowId) {
+  fetch('/queue/approve/'+folder+'/'+filename, {method:'POST'}).then(r=>r.json()).then(d=>{
+    if (d.ok) { updateRowStatus(rowId,'approved'); showToast('Approved — content queued for publishing','success'); }
+    else showToast('Error: '+d.error,'error');
+  }).catch(()=>showToast('Network error','error'));
+}
+function rejectItem(folder, filename, rowId) {
+  fetch('/queue/reject/'+folder+'/'+filename, {method:'POST'}).then(r=>r.json()).then(d=>{
+    if (d.ok) { updateRowStatus(rowId,'rejected'); showToast('Content rejected','error'); }
+    else showToast('Error: '+d.error,'error');
+  }).catch(()=>showToast('Network error','error'));
+}
+function updateRowStatus(rowId, status) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const badge = row.querySelector('.status-badge');
+  if (badge) { badge.className='status-badge badge-'+status; badge.textContent=status.charAt(0).toUpperCase()+status.slice(1); }
+  ['approve-btn','reject-btn'].forEach(function(cls){ const btn=row.querySelector('.'+cls); if(btn){btn.disabled=true;btn.style.opacity='0.4';} });
+}
+
+// Run job
+function runJob(jobId, btnEl) {
+  if (jobId === 'blog_generate') {
+    startBlogGenerationWorkflow();
+    return;
+  }
+  const orig = btnEl.innerHTML;
+  btnEl.disabled = true;
+  btnEl.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-opacity="0.3"/><path d="M21 12a9 9 0 00-9-9" stroke-linecap="round"/></svg> Running…';
+  fetch('/schedule/run/'+jobId, {method:'POST'}).then(r=>r.json()).then(d=>{
+    if (d.ok) { showToast('Job complete: '+(d.result.message||'done'),'success'); setTimeout(()=>location.reload(), 1200); }
+    else { showToast('Job failed: '+d.error,'error'); btnEl.disabled=false; btnEl.innerHTML=orig; }
+  }).catch(function(){ showToast('Network error','error'); btnEl.disabled=false; btnEl.innerHTML=orig; });
+}
+
+// 11-Step Visual Workflow
+let eventSource = null;
+function startBlogGenerationWorkflow(keyword = '') {
+  document.getElementById('workflow-modal').style.display = 'flex';
+  document.getElementById('workflow-close-btn').style.display = 'none';
+  const stepsContainer = document.getElementById('workflow-steps');
+  stepsContainer.innerHTML = '';
+  
+  // Pre-fill 11 steps
+  for(let i=1; i<=11; i++) {
+    const stepEl = document.createElement('div');
+    stepEl.id = 'workflow-step-' + i;
+    stepEl.style.display = 'flex';
+    stepEl.style.alignItems = 'center';
+    stepEl.style.gap = '12px';
+    stepEl.style.opacity = '0.3';
+    stepEl.innerHTML = `
+      <div class="step-icon" style="width:24px;height:24px;border-radius:12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">${i}</div>
+      <div class="step-msg" style="font-size:13px;color:#fff;">Waiting...</div>
+    `;
+    stepsContainer.appendChild(stepEl);
+  }
+
+  let url = '/schedule/run/blog_generate/stream';
+  if(keyword) url += '?keyword=' + encodeURIComponent(keyword);
+
+  eventSource = new EventSource(url);
+  eventSource.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+    if(data.error) {
+       showToast("Error: " + data.error, "error");
+       document.getElementById('workflow-close-btn').style.display = 'block';
+       eventSource.close();
+       return;
+    }
+    const step = data.step;
+    const msg = data.message;
+    
+    // Mark previous steps complete
+    for(let i=1; i<step; i++) {
+      const el = document.getElementById('workflow-step-' + i);
+      if(el) {
+         el.style.opacity = '1';
+         const icon = el.querySelector('.step-icon');
+         icon.style.background = '#22c55e';
+         icon.style.borderColor = '#22c55e';
+         icon.style.color = '#000';
+         icon.innerHTML = '✓';
+      }
+    }
+    
+    // Set current step
+    const el = document.getElementById('workflow-step-' + step);
+    if(el) {
+       el.style.opacity = '1';
+       const icon = el.querySelector('.step-icon');
+       icon.style.background = '#6366f1';
+       icon.style.borderColor = '#818cf8';
+       icon.innerHTML = '<span class="pulse-dot" style="background:#fff;"></span>';
+       el.querySelector('.step-msg').textContent = msg;
+       el.querySelector('.step-msg').style.fontWeight = '600';
+       el.querySelector('.step-msg').style.color = '#a5b4fc';
+    }
+    
+    if(step === 11 && msg.includes("Saving to Drafts Queue")) {
+       // Done
+       document.getElementById('workflow-step-11').querySelector('.step-icon').innerHTML = '✓';
+       document.getElementById('workflow-step-11').querySelector('.step-icon').style.background = '#22c55e';
+       showToast("Blog successfully generated!", "success");
+       document.getElementById('workflow-close-btn').style.display = 'block';
+       eventSource.close();
+    }
+  };
+  eventSource.onerror = function() {
+    eventSource.close();
+    document.getElementById('workflow-close-btn').style.display = 'block';
+  };
+}
+
+function closeWorkflowModal() {
+  document.getElementById('workflow-modal').style.display = 'none';
+  location.href = '/queue/';
+}
+
+// Edit
+function toggleEdit(rowId) {
+  const s = document.getElementById('edit-'+rowId);
+  if (s) { const open=s.style.display==='none'||!s.style.display||s.style.display===''; s.style.display=open?'block':'none'; if(open) s.querySelector('textarea').focus(); }
+}
+function saveEdit(folder, filename, rowId) {
+  const ta = document.getElementById('edit-'+rowId).querySelector('textarea');
+  const fd = new FormData(); fd.append('content', ta.value);
+  fetch('/queue/edit/'+folder+'/'+filename, {method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+    if(d.ok){ showToast('Changes saved','success'); document.getElementById('edit-'+rowId).style.display='none'; }
+    else showToast('Save failed: '+d.error,'error');
+  }).catch(()=>showToast('Network error','error'));
+}
+</script>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

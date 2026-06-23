@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DPDPA Enforcement Tracker India — KensaraAI</title>
+  <meta name="description" content="Live database of Indian data privacy enforcement actions — DPDPA, CERT-In, IT Act 43A, RBI data localisation. 23+ cases tracked. Maintained by KensaraAI." />
+  <meta name="keywords" content="DPDPA enforcement India, data protection penalty India, CERT-In enforcement, IT Act 43A cases, India data privacy fines, Data Protection Board India" />
+  <meta property="og:title" content="DPDPA Enforcement Tracker — India Data Privacy Cases" />
+  <meta property="og:description" content="Comprehensive database of Indian data privacy enforcement actions. Covers DPDPA, IT Act Section 43A, CERT-In, RBI, CCI, and GDPR fines affecting Indian companies." />
+  <meta property="og:url" content="https://kensara.in/dpdpa-enforcement-tracker" />
+  <meta property="og:type" content="website" />
+  <link rel="canonical" href="https://kensara.in/dpdpa-enforcement-tracker" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Dataset JSON-LD Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Dataset",
+    "@id": "https://kensara.in/dpdpa-enforcement-tracker#dataset",
+    "name": "DPDPA Enforcement Actions India — KensaraAI Tracker",
+    "description": "Comprehensive database of Indian data privacy enforcement actions. Covers DPDPA 2023 proceedings, IT Act Section 43A/72A cases, CERT-In breach notification enforcement, RBI data localisation actions, and international GDPR fines affecting Indian companies. Maintained by KensaraAI.",
+    "url": "https://kensara.in/dpdpa-enforcement-tracker",
+    "creator": {
+      "@type": "Organization",
+      "@id": "https://kensara.in/#organization",
+      "name": "KensaraAI",
+      "legalName": "Tajmanor LLP",
+      "url": "https://kensara.in"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "KensaraAI",
+      "url": "https://kensara.in"
+    },
+    "dateModified": "2026-06-08",
+    "datePublished": "2024-01-01",
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "isAccessibleForFree": true,
+    "keywords": ["DPDPA", "Digital Personal Data Protection Act", "data protection enforcement India", "CERT-In enforcement", "IT Act 43A", "data breach India", "MeitY enforcement", "data privacy penalty India"],
+    "spatialCoverage": {"@type": "Place", "name": "India"},
+    "temporalCoverage": "2017/..",
+    "distribution": {
+      "@type": "DataDownload",
+      "encodingFormat": "application/json",
+      "contentUrl": "https://kensara.in/dpdpa-enforcement-tracker/data.json"
+    }
+  }
+  </script>
+
+  <!-- Organization JSON-LD Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": "https://kensara.in/#organization",
+    "name": "KensaraAI",
+    "legalName": "Tajmanor LLP",
+    "url": "https://kensara.in",
+    "description": "India's first AI-native DPDPA + GDPR + CCPA compliance platform.",
+    "foundingDate": "2024",
+    "areaServed": "IN",
+    "memberOf": [
+      {"@type": "Organization", "name": "MeitY GENESIS EIR 2.0"},
+      {"@type": "Organization", "name": "IIT Guwahati Technology Incubation Centre"}
+    ]
+  }
+  </script>
+
+  <!-- BreadcrumbList Schema -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://kensara.in"},
+      {"@type": "ListItem", "position": 2, "name": "DPDPA Resources", "item": "https://kensara.in/dpdpa"},
+      {"@type": "ListItem", "position": 3, "name": "DPDPA Enforcement Tracker", "item": "https://kensara.in/dpdpa-enforcement-tracker"}
+    ]
+  }
+  </script>
+
+  <style>
+    .badge-fine { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .badge-ban { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+    .badge-investigation { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+    .badge-compliance { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+    .badge-enacted { background: #faf5ff; color: #7c3aed; border: 1px solid #e9d5ff; }
+    .badge-other { background: #f9fafb; color: #374151; border: 1px solid #e5e7eb; }
+    .section-header { background: linear-gradient(135deg, #1e3a5f 0%, #1d4ed8 100%); }
+    .kensarai-blue { color: #1d4ed8; }
+    .table-row-hover:hover { background-color: #f8faff; }
+  </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800">
+
+  <!-- Navigation Bar -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+      <a href="https://kensara.in" class="flex items-center gap-2">
+        <span class="text-xl font-bold text-blue-700">Kensara<span class="text-gray-800">AI</span></span>
+      </a>
+      <div class="flex items-center gap-4 text-sm">
+        <a href="https://kensara.in/dpdpa-compliance-guide" class="text-gray-600 hover:text-blue-700">DPDPA Guide</a>
+        <a href="https://kensara.in/dsar-automation-india" class="text-gray-600 hover:text-blue-700">DSAR Automation</a>
+        <a href="https://kensara.in/request-demo" class="bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800 transition-colors font-medium">Request Demo</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Breadcrumb -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+    <nav aria-label="breadcrumb" class="text-sm text-gray-500">
+      <ol class="flex items-center gap-2">
+        <li><a href="https://kensara.in" class="hover:text-blue-700">Home</a></li>
+        <li class="text-gray-300">/</li>
+        <li><a href="https://kensara.in/dpdpa" class="hover:text-blue-700">DPDPA Resources</a></li>
+        <li class="text-gray-300">/</li>
+        <li class="text-gray-800 font-medium">Enforcement Tracker</li>
+      </ol>
+    </nav>
+  </div>
+
+  <!-- Hero Section -->
+  <div class="section-header text-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div class="max-w-3xl">
+        <div class="inline-flex items-center gap-2 bg-blue-600 bg-opacity-40 rounded-full px-3 py-1 text-sm mb-4">
+          <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+          Updated: 8 June 2026
+        </div>
+        <h1 class="text-3xl sm:text-4xl font-bold mb-4">
+          DPDPA Enforcement Tracker India
+        </h1>
+        <p class="text-blue-100 text-lg mb-6">
+          The most comprehensive public database of Indian data privacy enforcement actions —
+          covering DPDPA 2023, IT Act Section 43A, CERT-In directions, RBI data localisation
+          enforcement, CCI data-related fines, and GDPR actions affecting Indian companies.
+        </p>
+        <div class="flex flex-wrap gap-3 text-sm">
+          <div class="bg-white bg-opacity-10 rounded-lg px-4 py-2">
+            <span class="font-bold text-xl">23</span>
+            <span class="text-blue-200 ml-1">Total cases tracked</span>
+          </div>
+          <div class="bg-white bg-opacity-10 rounded-lg px-4 py-2">
+            <span class="font-bold text-xl">₹213 Cr</span>
+            <span class="text-blue-200 ml-1">Largest India fine (CCI)</span>
+          </div>
+          <div class="bg-white bg-opacity-10 rounded-lg px-4 py-2">
+            <span class="font-bold text-xl">0</span>
+            <span class="text-blue-200 ml-1">DPDPA Board actions yet</span>
+          </div>
+          <div class="bg-white bg-opacity-10 rounded-lg px-4 py-2">
+            <span class="font-bold text-xl">2017</span>
+            <span class="text-blue-200 ml-1">Earliest case</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alert Banner -->
+  <div class="bg-amber-50 border-b border-amber-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-start gap-3 text-sm text-amber-800">
+      <svg class="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+      </svg>
+      <span>
+        <strong>DPDPA Board not yet operational:</strong> The Data Protection Board of India (DPBI) has not yet been constituted as of June 2026. No formal DPDPA enforcement actions have been issued yet. Enforcement under DPDPA (penalties up to ₹250 crore) will begin once the Board is established and rules are finalised.
+      </span>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+
+    <!-- Stats Summary Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
+      <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div class="text-2xl font-bold text-blue-700">0</div>
+        <div class="text-sm text-gray-600 mt-1">DPDPA Board Actions</div>
+        <div class="text-xs text-gray-400 mt-1">Board not yet constituted</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div class="text-2xl font-bold text-orange-600">3</div>
+        <div class="text-sm text-gray-600 mt-1">CERT-In Actions</div>
+        <div class="text-xs text-gray-400 mt-1">6-hour reporting mandate</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div class="text-2xl font-bold text-purple-600">18</div>
+        <div class="text-sm text-gray-600 mt-1">Pre-DPDPA / IT Act</div>
+        <div class="text-xs text-gray-400 mt-1">43A precedent cases</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div class="text-2xl font-bold text-green-600">2</div>
+        <div class="text-sm text-gray-600 mt-1">GDPR (India Relevant)</div>
+        <div class="text-xs text-gray-400 mt-1">Affecting Indian companies</div>
+      </div>
+    </div>
+
+    <!-- Sector Breakdown -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-8">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Enforcement by Sector</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-center text-sm">
+        <div class="bg-blue-50 rounded-lg p-3">
+          <div class="font-bold text-blue-700 text-xl">5</div>
+          <div class="text-gray-600 mt-1">Social Media / Tech</div>
+        </div>
+        <div class="bg-red-50 rounded-lg p-3">
+          <div class="font-bold text-red-700 text-xl">3</div>
+          <div class="text-gray-600 mt-1">Insurance / Healthcare</div>
+        </div>
+        <div class="bg-green-50 rounded-lg p-3">
+          <div class="font-bold text-green-700 text-xl">3</div>
+          <div class="text-gray-600 mt-1">Payments / Fintech</div>
+        </div>
+        <div class="bg-purple-50 rounded-lg p-3">
+          <div class="font-bold text-purple-700 text-xl">2</div>
+          <div class="text-gray-600 mt-1">Government / Healthcare</div>
+        </div>
+        <div class="bg-orange-50 rounded-lg p-3">
+          <div class="font-bold text-orange-700 text-xl">10</div>
+          <div class="text-gray-600 mt-1">Other Sectors</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter / Search Controls -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
+      <div class="flex flex-wrap gap-3 items-center">
+        <span class="text-sm font-medium text-gray-700">Filter:</span>
+        <button onclick="filterTable('all')" class="filter-btn active px-3 py-1.5 rounded-lg text-sm border border-blue-600 bg-blue-50 text-blue-700 font-medium" data-filter="all">All Cases</button>
+        <button onclick="filterTable('cert-in')" class="filter-btn px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:border-blue-300" data-filter="cert-in">CERT-In</button>
+        <button onclick="filterTable('pre-dpdpa')" class="filter-btn px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:border-blue-300" data-filter="pre-dpdpa">IT Act / Pre-DPDPA</button>
+        <button onclick="filterTable('fine')" class="filter-btn px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:border-blue-300" data-filter="fine">Fines Imposed</button>
+        <button onclick="filterTable('breach')" class="filter-btn px-3 py-1.5 rounded-lg text-sm border border-gray-200 text-gray-600 hover:border-blue-300" data-filter="breach">Data Breaches</button>
+        <div class="ml-auto">
+          <input type="text" id="searchInput" placeholder="Search company, sector, violation..." oninput="searchTable(this.value)"
+            class="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         Section 1: DPDPA / Regulatory Timeline
+         ==================================================== -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="bg-purple-100 text-purple-800 text-xs font-bold px-3 py-1 rounded-full">DPDPA 2023</div>
+        <h2 class="text-lg font-semibold text-gray-900">Legislative & Regulatory Timeline</h2>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">The DPDPA framework — law enacted but enforcement not yet live. Data Protection Board of India (DPBI) pending constitution.</p>
+      <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+        <table class="w-full text-sm" id="dpdpa-table">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Date</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Authority</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Event</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Significance</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Penalty</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Outcome</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Source</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100" id="dpdpa-tbody">
+            <tr class="table-row-hover" data-category="dpdpa" data-sector="Regulatory" data-violation="Legislative">
+              <td class="px-4 py-3 text-gray-500 whitespace-nowrap">11 Aug 2023</td>
+              <td class="px-4 py-3 font-medium text-gray-800">Parliament / MeitY</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-900">DPDPA 2023 — Presidential Assent</div>
+                <div class="text-gray-500 text-xs mt-1">Digital Personal Data Protection Act enacted. Maximum penalty: ₹250 crore/violation, ₹500 crore/entity. Data Protection Board to be constituted.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-600">India's first comprehensive data protection law. Replaces IT Act 43A as primary framework.</td>
+              <td class="px-4 py-3 text-gray-500">N/A</td>
+              <td class="px-4 py-3"><span class="badge-enacted text-xs px-2 py-1 rounded-full font-medium">Law Enacted</span></td>
+              <td class="px-4 py-3"><a href="https://www.meity.gov.in/writereaddata/files/Digital%20Personal%20Data%20Protection%20Act%202023.pdf" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">MeitY ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="dpdpa" data-sector="Regulatory" data-violation="Rules">
+              <td class="px-4 py-3 text-gray-500 whitespace-nowrap">3 Jan 2025</td>
+              <td class="px-4 py-3 font-medium text-gray-800">MeitY</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-900">DPDPA Draft Rules 2025 Published</div>
+                <div class="text-gray-500 text-xs mt-1">Rules cover DPBI procedures, consent manager framework, significant data fiduciary thresholds, and data localisation.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-600">Rules finalisation triggers DPBI constitution and enforcement start. Not yet final as of June 2026.</td>
+              <td class="px-4 py-3 text-gray-500">N/A</td>
+              <td class="px-4 py-3"><span class="badge-investigation text-xs px-2 py-1 rounded-full font-medium">Consultation</span></td>
+              <td class="px-4 py-3"><a href="https://www.meity.gov.in/content/digital-personal-data-protection-rules-2025" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">MeitY ↗</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         Section 2: CERT-In Enforcement
+         ==================================================== -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-1 rounded-full">CERT-In</div>
+        <h2 class="text-lg font-semibold text-gray-900">CERT-In Enforcement Actions</h2>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">Indian Computer Emergency Response Team — cybersecurity incident reporting enforcement (IT Act Section 70B). 6-hour breach reporting mandatory for all companies in India.</p>
+      <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Date</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sector</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Summary</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Penalty</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Outcome</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Source</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr class="table-row-hover" data-category="cert-in" data-sector="All sectors" data-violation="Reporting mandate">
+              <td class="px-4 py-3 text-gray-500 whitespace-nowrap">28 Apr 2022</td>
+              <td class="px-4 py-3 font-medium text-gray-800">Industry-wide</td>
+              <td class="px-4 py-3 text-gray-600">All sectors</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-900">6-Hour Breach Reporting Direction</div>
+                <div class="text-gray-500 text-xs mt-1">All companies must report cyber incidents within 6 hours. 180-day log retention. NTP sync mandatory. Effective 25 June 2022.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-700">Up to ₹1 crore or 1 year imprisonment</td>
+              <td class="px-4 py-3"><span class="badge-enacted text-xs px-2 py-1 rounded-full font-medium">In Force</span></td>
+              <td class="px-4 py-3"><a href="https://www.cert-in.org.in/PDF/CERT-In_Directions_70B_28.04.2022.pdf" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">CERT-In ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="cert-in" data-sector="Cybersecurity / VPN" data-violation="Non-compliance">
+              <td class="px-4 py-3 text-gray-500 whitespace-nowrap">Sep 2022</td>
+              <td class="px-4 py-3 font-medium text-gray-800">NordVPN, ExpressVPN, Surfshark +2</td>
+              <td class="px-4 py-3 text-gray-600">Cybersecurity / VPN</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-900">VPN Providers Exit India</div>
+                <div class="text-gray-500 text-xs mt-1">5 major VPN providers withdrew India servers rather than comply with 5-year user log retention. Services continue via overseas servers.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">N/A — voluntary exit</td>
+              <td class="px-4 py-3"><span class="badge-other text-xs px-2 py-1 rounded-full font-medium">Voluntary Exit</span></td>
+              <td class="px-4 py-3"><a href="https://www.cert-in.org.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">CERT-In ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="cert-in" data-sector="Cybersecurity" data-violation="Data breach">
+              <td class="px-4 py-3 text-gray-500 whitespace-nowrap">14 Feb 2023</td>
+              <td class="px-4 py-3 font-medium text-gray-800">CloudSEK</td>
+              <td class="px-4 py-3 text-gray-600">Cybersecurity</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-900">Insider Data Breach</div>
+                <div class="text-gray-500 text-xs mt-1">Employee allegedly accessed client data. CERT-In investigated. Proactive disclosure by company. No public penalty order issued.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">Undisclosed</td>
+              <td class="px-4 py-3"><span class="badge-investigation text-xs px-2 py-1 rounded-full font-medium">Investigation</span></td>
+              <td class="px-4 py-3"><a href="https://cloudsek.com/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">CloudSEK ↗</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         Section 3: Pre-DPDPA / IT Act Cases
+         ==================================================== -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="bg-gray-200 text-gray-700 text-xs font-bold px-3 py-1 rounded-full">IT Act / Pre-DPDPA</div>
+        <h2 class="text-lg font-semibold text-gray-900">IT Act Section 43A Enforcement &amp; Precedent Cases</h2>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">Enforcement actions under IT Act Section 43A (SPDI Rules 2011), IT Rules 2021, and sector regulators (RBI, CCI, SEBI, IRDAI) — the precedent landscape that shapes how DPDPA will be enforced.</p>
+      <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+        <table class="w-full text-sm" id="main-enforcement-table">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-20">Date</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Authority</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Sector</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Summary &amp; Violation</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Penalty</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-28">Outcome</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-14">Source</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Telecom" data-violation="Data breach">
+              <td class="px-4 py-3 text-gray-500">Jul 2017</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">TRAI</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Reliance Jio</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Telecom</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">120M subscriber records alleged leak</div>
+                <div class="text-gray-500 text-xs mt-1">MagicApk website listed Jio user data. Jio disputed authenticity. TRAI investigated — no definitive breach confirmed.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">No penalty</td>
+              <td class="px-4 py-3"><span class="badge-investigation text-xs px-2 py-1 rounded-full font-medium">No Penalty</span></td>
+              <td class="px-4 py-3"><a href="https://trai.gov.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">TRAI ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Social Media" data-violation="Data breach">
+              <td class="px-4 py-3 text-gray-500">Jan 2018</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">UIDAI</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Aadhaar Data Reseller</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Data Brokerage</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">Aadhaar biometric data sold via WhatsApp</div>
+                <div class="text-gray-500 text-xs mt-1">Tribune investigation: Aadhaar data + biometric bypass software sold for ₹500–₹800. UIDAI filed FIR. One of India's most significant data exposures.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">FIR filed</td>
+              <td class="px-4 py-3"><span class="badge-other text-xs px-2 py-1 rounded-full font-medium">FIR Filed</span></td>
+              <td class="px-4 py-3"><a href="https://uidai.gov.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">UIDAI ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Social Media / Messaging" data-violation="Spyware">
+              <td class="px-4 py-3 text-gray-500">Dec 2019</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">MeitY</td>
+              <td class="px-4 py-3 font-medium text-gray-900">WhatsApp (Pegasus)</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Social Media</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">Pegasus spyware targeting Indian users</div>
+                <div class="text-gray-500 text-xs mt-1">MeitY notice to WhatsApp after journalists/activists targeted via Pegasus. Supreme Court later appointed Justice Raveendran committee.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">No penalty on WhatsApp</td>
+              <td class="px-4 py-3"><span class="badge-investigation text-xs px-2 py-1 rounded-full font-medium">MeitY Notice</span></td>
+              <td class="px-4 py-3"><a href="https://www.meity.gov.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">MeitY ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Technology" data-violation="Consent violation">
+              <td class="px-4 py-3 text-gray-500">Jan 2020</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">MeitY / Delhi HC</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Truecaller</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Technology / App</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">Contact upload without explicit consent</div>
+                <div class="text-gray-500 text-xs mt-1">PIL challenged uploading of third-party contacts without informed consent. Company updated consent UX following regulatory pressure. No formal penalty.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">No formal penalty</td>
+              <td class="px-4 py-3"><span class="badge-compliance text-xs px-2 py-1 rounded-full font-medium">Compliance</span></td>
+              <td class="px-4 py-3"><a href="https://delhihighcourt.nic.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">Delhi HC ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Social Media" data-violation="Regulatory non-compliance">
+              <td class="px-4 py-3 text-gray-500">Feb 2021</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">MeitY</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Twitter / X Corp</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Social Media</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">Failure to appoint Grievance Officer</div>
+                <div class="text-gray-500 text-xs mt-1">IT Rules 2021 — Twitter failed to appoint resident Grievance Officer. Lost intermediary liability protection. Complied May 2021.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">Safe harbour lapsed</td>
+              <td class="px-4 py-3"><span class="badge-compliance text-xs px-2 py-1 rounded-full font-medium">Compliance</span></td>
+              <td class="px-4 py-3"><a href="https://www.meity.gov.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">MeitY ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Social Media / Messaging" data-violation="Consent violation">
+              <td class="px-4 py-3 text-gray-500">May 2021</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">MeitY / CCI</td>
+              <td class="px-4 py-3 font-medium text-gray-900">WhatsApp / Meta</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Social Media</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">2021 Privacy Policy — forced Facebook data sharing</div>
+                <div class="text-gray-500 text-xs mt-1">WhatsApp policy requiring data sharing with Facebook violated SPDI Rules 2011. MeitY directed rollback. CCI launched separate antitrust probe.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">Policy rollback ordered</td>
+              <td class="px-4 py-3"><span class="badge-compliance text-xs px-2 py-1 rounded-full font-medium">Rollback</span></td>
+              <td class="px-4 py-3"><a href="https://www.meity.gov.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">MeitY ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa fine" data-sector="Payments / Fintech" data-violation="Data localisation">
+              <td class="px-4 py-3 text-gray-500">May 2021</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">RBI</td>
+              <td class="px-4 py-3 font-medium text-gray-900">American Express</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Payments / Fintech</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">Data localisation non-compliance</div>
+                <div class="text-gray-500 text-xs mt-1">Failed to store Indian payment data locally per RBI 2018 circular. New customer onboarding banned May 2021. Complied — ban lifted Nov 2021.</div>
+              </td>
+              <td class="px-4 py-3 text-xs font-medium text-orange-700">Business ban (6 months)</td>
+              <td class="px-4 py-3"><span class="badge-ban text-xs px-2 py-1 rounded-full font-medium">Ban → Compliance</span></td>
+              <td class="px-4 py-3"><a href="https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12102" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">RBI ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa fine" data-sector="Payments / Fintech" data-violation="Data localisation">
+              <td class="px-4 py-3 text-gray-500">Jul 2021</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">RBI</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Mastercard Asia Pacific</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Payments / Fintech</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">Data localisation non-compliance</div>
+                <div class="text-gray-500 text-xs mt-1">Failed to store Indian payment data locally per RBI 2018 circular. Onboarding ban July 2021. Complied — ban lifted December 2021.</div>
+              </td>
+              <td class="px-4 py-3 text-xs font-medium text-orange-700">Business ban (5 months)</td>
+              <td class="px-4 py-3"><span class="badge-ban text-xs px-2 py-1 rounded-full font-medium">Ban → Compliance</span></td>
+              <td class="px-4 py-3"><a href="https://www.rbi.org.in/Scripts/NotificationUser.aspx?Id=12142" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">RBI ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa fine" data-sector="Social Media / Technology" data-violation="Antitrust / Data sharing">
+              <td class="px-4 py-3 text-gray-500">Nov 2022</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">CCI</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Meta / WhatsApp</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Social Media</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800 flex items-center gap-2">
+                  ₹213.14 crore fine — Largest India data fine
+                  <span class="bg-red-100 text-red-700 text-xs px-1.5 py-0.5 rounded font-bold">RECORD</span>
+                </div>
+                <div class="text-gray-500 text-xs mt-1">CCI found Meta abused dominance via forced Facebook data sharing through 2021 WhatsApp policy. 5-year advertising data-sharing ban imposed.</div>
+              </td>
+              <td class="px-4 py-3 text-xs font-bold text-red-700">₹213.14 crore</td>
+              <td class="px-4 py-3"><span class="badge-fine text-xs px-2 py-1 rounded-full font-medium">Fine Imposed</span></td>
+              <td class="px-4 py-3"><a href="https://www.cci.gov.in/antitrust/orders/details/889/0" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">CCI ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Social Media" data-violation="Regulatory non-compliance">
+              <td class="px-4 py-3 text-gray-500">Mar 2023</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">MeitY</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Google LLC</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Technology</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">IT Rules 2021 compliance directed</div>
+                <div class="text-gray-500 text-xs mt-1">MeitY directed Google to comply with grievance officer and appellate mechanism requirements under IT Rules 2021. Google complied.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">No fine — compliance directed</td>
+              <td class="px-4 py-3"><span class="badge-compliance text-xs px-2 py-1 rounded-full font-medium">Compliance</span></td>
+              <td class="px-4 py-3"><a href="https://www.meity.gov.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">MeitY ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Government / Healthcare" data-violation="Data breach">
+              <td class="px-4 py-3 text-gray-500">Oct 2023</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">CERT-In / NIC</td>
+              <td class="px-4 py-3 font-medium text-gray-900">ICMR / CoWIN</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Government / Healthcare</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800 flex items-center gap-2">
+                  815 million records listed for sale
+                  <span class="bg-red-100 text-red-700 text-xs px-1.5 py-0.5 rounded font-bold">LARGEST BY VOLUME</span>
+                </div>
+                <div class="text-gray-500 text-xs mt-1">COVID-19 testing database records including Aadhaar + passport numbers listed on darkweb. Government denied CoWIN breach. Security audit mandated.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">Government entity — no fine</td>
+              <td class="px-4 py-3"><span class="badge-investigation text-xs px-2 py-1 rounded-full font-medium">Investigation</span></td>
+              <td class="px-4 py-3"><a href="https://www.cert-in.org.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">CERT-In ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Insurance / Healthcare" data-violation="Data breach">
+              <td class="px-4 py-3 text-gray-500">Sep 2024</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">CERT-In / IRDAI</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Star Health Insurance</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Insurance / Healthcare</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">31 million policyholders' data leaked via Telegram</div>
+                <div class="text-gray-500 text-xs mt-1">Health records, claims data, PAN numbers sold via Telegram chatbots. Star Health filed legal action against Telegram &amp; Cloudflare. IRDAI investigation ongoing.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">Investigation ongoing</td>
+              <td class="px-4 py-3"><span class="badge-investigation text-xs px-2 py-1 rounded-full font-medium">Ongoing</span></td>
+              <td class="px-4 py-3"><a href="https://www.thehindu.com/business/Industry/star-health-data-leak-31-million-customers-data-leaked-on-telegram/article68674267.ece" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">The Hindu ↗</a></td>
+            </tr>
+            <tr class="table-row-hover" data-category="pre-dpdpa" data-sector="Consumer Electronics / IoT" data-violation="Data breach">
+              <td class="px-4 py-3 text-gray-500">Mar 2024</td>
+              <td class="px-4 py-3 text-gray-700 font-medium">CERT-In</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Boat Lifestyle</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Consumer Electronics</td>
+              <td class="px-4 py-3">
+                <div class="font-medium text-gray-800">7.5 million customer records leaked</div>
+                <div class="text-gray-500 text-xs mt-1">Names, emails, phone numbers, addresses advertised on darkweb for EUR 2. CERT-In notified. No public penalty order.</div>
+              </td>
+              <td class="px-4 py-3 text-xs text-gray-500">No public penalty</td>
+              <td class="px-4 py-3"><span class="badge-investigation text-xs px-2 py-1 rounded-full font-medium">Investigation</span></td>
+              <td class="px-4 py-3"><a href="https://www.cert-in.org.in/" target="_blank" rel="noopener" class="text-blue-600 hover:text-blue-800 text-xs">CERT-In ↗</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====================================================
+         Section 4: GDPR Fines — India Relevant
+         ==================================================== -->
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">GDPR</div>
+        <h2 class="text-lg font-semibold text-gray-900">GDPR Fines — India-Relevant Cases</h2>
+      </div>
+      <p class="text-sm text-gray-500 mb-4">Major GDPR enforcement actions that directly affect Indian IT/ITES companies or Indian subsidiaries of global companies. Included as benchmarks for DPDPA enforcement precedent.</p>
+      <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-20">Date</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Authority</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Violation</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Penalty</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">India Relevance</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr class="table-row-hover">
+              <td class="px-4 py-3 text-gray-500">May 2023</td>
+              <td class="px-4 py-3 text-gray-700">DPC Ireland</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Meta Platforms</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Unlawful EU→US data transfers (Art. 46)</td>
+              <td class="px-4 py-3 font-bold text-red-700">€1.2 billion</td>
+              <td class="px-4 py-3 text-xs text-gray-600">Indian IT/ITES companies processing EU data face same exposure. SCCs must be correctly implemented for EU-India transfers.</td>
+            </tr>
+            <tr class="table-row-hover">
+              <td class="px-4 py-3 text-gray-500">2021/2023</td>
+              <td class="px-4 py-3 text-gray-700">LDI Luxembourg</td>
+              <td class="px-4 py-3 font-medium text-gray-900">Amazon Europe</td>
+              <td class="px-4 py-3 text-gray-600 text-xs">Unlawful processing for advertising without consent (Art. 5/6)</td>
+              <td class="px-4 py-3 font-bold text-red-700">€350M (appeal)</td>
+              <td class="px-4 py-3 text-xs text-gray-600">Indian ecommerce (Flipkart, Nykaa, Meesho) with EU operations face same consent requirements. DPDPA consent framework mirrors GDPR.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Key Insights -->
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8">
+      <h2 class="text-lg font-semibold text-blue-900 mb-4">Key Takeaways for Indian Companies</h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="flex gap-3">
+          <div class="text-blue-600 text-xl mt-0.5">1</div>
+          <div>
+            <div class="font-medium text-gray-900">DPDPA enforcement hasn't started yet — but it will</div>
+            <div class="text-sm text-gray-600 mt-1">The Data Protection Board of India is not yet constituted. When it is, the ₹250 crore per violation penalty will be live. Start compliance now, not when the Board is operational.</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="text-blue-600 text-xl mt-0.5">2</div>
+          <div>
+            <div class="font-medium text-gray-900">CERT-In's 6-hour rule is active and enforced now</div>
+            <div class="text-sm text-gray-600 mt-1">Unlike DPDPA, CERT-In's breach reporting mandate is in force since June 2022. Failure to report within 6 hours carries criminal penalty. Automate breach detection.</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="text-blue-600 text-xl mt-0.5">3</div>
+          <div>
+            <div class="font-medium text-gray-900">Data localisation is India's most effective enforcement tool</div>
+            <div class="text-sm text-gray-600 mt-1">RBI's business bans on Mastercard and Amex show India will use operational bans, not just fines. DPDPA is expected to include data localisation requirements for sensitive data.</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <div class="text-blue-600 text-xl mt-0.5">4</div>
+          <div>
+            <div class="font-medium text-gray-900">Healthcare &amp; Fintech face dual regulatory pressure</div>
+            <div class="text-sm text-gray-600 mt-1">Star Health (IRDAI + CERT-In) and payment firms (RBI + DPDPA) face obligations from multiple regulators simultaneously. A single platform covering all is essential.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA Section -->
+    <div class="bg-gradient-to-r from-blue-700 to-blue-900 rounded-xl p-8 text-white text-center mb-10">
+      <h2 class="text-2xl font-bold mb-3">Don't wait for the Data Protection Board to come for you</h2>
+      <p class="text-blue-200 mb-6 max-w-2xl mx-auto">
+        KensaraAI's 12 AI agents continuously scan your infrastructure, automate DSAR handling,
+        manage consent records, and auto-start breach notification clocks — so you're ready before
+        DPBI enforcement begins.
+      </p>
+      <div class="flex flex-wrap justify-center gap-4">
+        <a href="https://kensara.in/request-demo"
+           class="bg-white text-blue-700 font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors">
+          Request a Demo
+        </a>
+        <a href="https://kensara.in/dpdpa-compliance-guide"
+           class="border border-white text-white font-medium px-6 py-3 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+          Read DPDPA Compliance Guide
+        </a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 bg-white">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <span class="font-bold text-blue-700">KensaraAI</span>
+          <span class="text-gray-500 text-sm ml-2">— India's first AI-native DPDPA compliance platform</span>
+        </div>
+        <div class="text-sm text-gray-500 text-center">
+          Maintained by <a href="https://kensara.in" class="text-blue-600 hover:underline">KensaraAI (Tajmanor LLP)</a> ·
+          MeitY GENESIS EIR 2.0 · IITG TIC ·
+          <a href="https://kensara.in/request-demo" class="text-blue-600 hover:underline">Request Demo</a>
+        </div>
+        <div class="text-xs text-gray-400">Last updated: June 2026</div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400 text-center">
+        All data sourced from official regulatory notices, court orders, and verified news reports.
+        Penalty amounts confirmed where official orders exist; unconfirmed details noted inline.
+        This tracker is provided for informational purposes only — not legal advice.
+        <a href="https://creativecommons.org/licenses/by/4.0/" class="hover:underline ml-1" target="_blank" rel="noopener">CC BY 4.0</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Filter functionality
+    function filterTable(filter) {
+      // Update active button
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-blue-50', 'text-blue-700', 'border-blue-600', 'font-medium');
+        btn.classList.add('text-gray-600', 'border-gray-200');
+      });
+      const activeBtn = document.querySelector(`[data-filter="${filter}"]`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-blue-50', 'text-blue-700', 'border-blue-600', 'font-medium');
+        activeBtn.classList.remove('text-gray-600', 'border-gray-200');
+      }
+
+      // Filter rows
+      document.querySelectorAll('tbody tr').forEach(row => {
+        const category = (row.dataset.category || '').toLowerCase();
+        const violation = (row.dataset.violation || '').toLowerCase();
+
+        let show = true;
+        if (filter === 'cert-in') show = category.includes('cert-in');
+        else if (filter === 'pre-dpdpa') show = category.includes('pre-dpdpa');
+        else if (filter === 'fine') show = category.includes('fine');
+        else if (filter === 'breach') show = violation.includes('breach') || violation.includes('leak');
+
+        row.style.display = show ? '' : 'none';
+      });
+    }
+
+    // Search functionality
+    function searchTable(query) {
+      const q = query.toLowerCase().trim();
+      document.querySelectorAll('tbody tr').forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = (!q || text.includes(q)) ? '' : 'none';
+      });
+    }
+
+    // Keyboard shortcut: / to focus search
+    document.addEventListener('keydown', e => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        document.getElementById('searchInput').focus();
+      }
+    });
+  </script>
+</body>
+</html>

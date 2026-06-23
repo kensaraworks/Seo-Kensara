@@ -1,0 +1,46 @@
+# Core
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+gunicorn==22.0.0
+pydantic==2.7.0
+pydantic-settings==2.3.0
+
+# Azure OpenAI (MANDATORY — not openai from Anthropic)
+openai==1.35.0  # Azure OpenAI client
+
+# NVIDIA NIM — primary blog/content generation (OpenAI-compatible)
+# Uses openai package above with custom base_url
+
+# Groq — fallback LLM (llama-3.3-70b-versatile)
+groq==0.9.0
+
+# Scheduling
+apscheduler==3.10.4
+
+# HTTP
+httpx==0.27.0
+
+# RSS scraping
+feedparser==6.0.11
+beautifulsoup4==4.12.3
+lxml==5.2.2
+
+# Logging (NEVER use stdlib logging)
+structlog==24.2.0
+
+# Templating
+jinja2==3.1.4
+
+# File I/O (async)
+aiofiles==23.2.1
+
+# Multipart (FastAPI file uploads)
+python-multipart==0.0.9
+
+# Testing
+pytest==8.2.0
+pytest-asyncio==0.23.7
+pytest-mock==3.14.0
+
+# Dev tools
+python-dotenv==1.0.1

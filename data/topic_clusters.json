@@ -1,0 +1,600 @@
+{
+  "metadata": {
+    "title": "KensaraAI SEO Topic Cluster Map",
+    "description": "5 pillar topic clusters mapping KensaraAI's target keywords to pillar pages and supporting cluster content. Built for India-focused DPDPA/GDPR compliance searches.",
+    "maintained_by": "KensaraAI",
+    "last_updated": "2026-06-08",
+    "target_market": "India — Enterprise DPOs, CISOs, Legal Counsels, Founders in regulated sectors",
+    "strategy": "Each pillar page is a comprehensive 2500-4000 word guide. Cluster pages are 800-1200 word posts linking back to pillar. Internal linking creates topical authority."
+  },
+  "pillars": [
+    {
+      "id": "dpdpa-compliance",
+      "pillar_page": "/dpdpa-compliance-guide",
+      "primary_keyword": "DPDPA compliance guide",
+      "secondary_keywords": ["DPDPA compliance software", "DPDPA Act India", "Digital Personal Data Protection Act compliance"],
+      "intent": "informational + transactional",
+      "search_volume_estimate": "high",
+      "competition": "medium",
+      "content_angle": "The definitive DPDPA compliance guide for Indian enterprises — what it means, what you must do, what tools automate it",
+      "target_persona": "DPO / Legal Counsel / CISO at Indian enterprise",
+      "pillar_word_count": 3500,
+      "cluster_pages": [
+        {
+          "slug": "dpdpa-compliance-checklist",
+          "title": "DPDPA Compliance Checklist 2025 — 27 Steps Indian Companies Must Take",
+          "keyword": "DPDPA compliance checklist",
+          "intent": "informational",
+          "word_count": 1000,
+          "content_angle": "Step-by-step actionable checklist DPOs can download and work through",
+          "cta": "Download full checklist PDF + book demo"
+        },
+        {
+          "slug": "dpdpa-compliance-software",
+          "title": "Best DPDPA Compliance Software in India (2025 Comparison)",
+          "keyword": "DPDPA compliance software",
+          "intent": "transactional",
+          "word_count": 1200,
+          "content_angle": "Comparison of Indian compliance software options — feature table, pricing, India-native vs. US-centric",
+          "cta": "Compare KensaraAI vs. OneTrust free"
+        },
+        {
+          "slug": "dpdpa-compliance-tool-india",
+          "title": "DPDPA Compliance Tool for Indian Companies — What to Look For",
+          "keyword": "DPDPA compliance tool India",
+          "intent": "transactional",
+          "word_count": 900,
+          "content_angle": "Buying guide for DPOs evaluating compliance tools — India-specific requirements",
+          "cta": "Request KensaraAI demo"
+        },
+        {
+          "slug": "dpdpa-significant-data-fiduciary",
+          "title": "Significant Data Fiduciary Under DPDPA — Are You One?",
+          "keyword": "significant data fiduciary DPDPA",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "What makes a company a SDF, higher obligations, how to prepare",
+          "cta": "Free DPDPA readiness assessment"
+        },
+        {
+          "slug": "dpdpa-data-protection-board",
+          "title": "Data Protection Board of India — Powers, Penalties, and How It Will Enforce DPDPA",
+          "keyword": "Data Protection Board India",
+          "intent": "informational",
+          "word_count": 1000,
+          "content_angle": "Board structure, complaint mechanism, penalty tiers up to ₹500 crore",
+          "cta": "Prepare before Board becomes operational"
+        },
+        {
+          "slug": "dpdpa-penalty-india",
+          "title": "DPDPA Penalties India 2025 — ₹250 Crore Fines Explained",
+          "keyword": "DPDPA penalty India",
+          "intent": "fear-based / informational",
+          "word_count": 800,
+          "content_angle": "Fear-based: real penalty tiers, what triggers them, how to avoid them",
+          "cta": "Audit your compliance gap now"
+        },
+        {
+          "slug": "dpdpa-consent-requirements",
+          "title": "DPDPA Consent Requirements — What Indian Companies Must Get Right",
+          "keyword": "DPDPA consent requirements",
+          "intent": "informational",
+          "word_count": 1000,
+          "content_angle": "Specific, unambiguous, informed consent under DPDPA vs. SPDI Rules — practical implementation",
+          "cta": "See KensaraAI Consent Manager"
+        },
+        {
+          "slug": "dpdpa-data-principal-rights",
+          "title": "Data Principal Rights Under DPDPA — What Your Customers Can Now Demand",
+          "keyword": "data principal rights DPDPA",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "7 rights (access, correction, erasure, nomination etc.) — and your 30-day obligation",
+          "cta": "Automate DSAR handling with KensaraAI"
+        },
+        {
+          "slug": "dpdpa-for-startups",
+          "title": "DPDPA Compliance for Indian Startups — Minimum Viable Compliance",
+          "keyword": "DPDPA compliance for startups India",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "Startup-focused: what obligations apply at what scale, startup-safe approach",
+          "cta": "Startup pricing from ₹15L/year"
+        },
+        {
+          "slug": "dpdpa-healthcare-compliance",
+          "title": "DPDPA Compliance for Healthcare Companies in India — Special Obligations",
+          "keyword": "DPDPA healthcare compliance India",
+          "intent": "informational + transactional",
+          "word_count": 1000,
+          "content_angle": "Health data as sensitive data under DPDPA — hospital, insurance, diagnostics obligations",
+          "cta": "Healthcare sector compliance audit"
+        },
+        {
+          "slug": "dpdpa-fintech-compliance",
+          "title": "DPDPA Compliance for Fintech in India — RBI + DPDPA Dual Obligations",
+          "keyword": "DPDPA fintech compliance",
+          "intent": "informational + transactional",
+          "word_count": 1000,
+          "content_angle": "Fintech double burden: RBI cybersecurity + DPDPA. How to handle both.",
+          "cta": "Fintech compliance assessment"
+        },
+        {
+          "slug": "what-is-dpdpa-india",
+          "title": "What is DPDPA? — India's Data Protection Law Explained Simply",
+          "keyword": "what is DPDPA India",
+          "intent": "informational / awareness",
+          "word_count": 800,
+          "content_angle": "Plain-English explainer for non-lawyers. History, key requirements, timeline.",
+          "cta": "Full DPDPA compliance guide"
+        },
+        {
+          "slug": "dpdpa-implementation-timeline",
+          "title": "DPDPA Implementation Timeline 2025-2026 — What Indian Companies Must Do and When",
+          "keyword": "DPDPA timeline India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Milestone tracker: rules finalisation, Board constitution, compliance deadlines",
+          "cta": "Start compliance now — before deadlines"
+        }
+      ]
+    },
+    {
+      "id": "dpdpa-vs-gdpr",
+      "pillar_page": "/dpdpa-vs-gdpr-comparison",
+      "primary_keyword": "DPDPA vs GDPR",
+      "secondary_keywords": ["GDPR compliance tool India", "GDPR vs DPDPA India", "GDPR India applicability"],
+      "intent": "informational + transactional",
+      "search_volume_estimate": "high",
+      "competition": "low",
+      "content_angle": "Definitive DPDPA vs GDPR comparison for Indian companies — what's similar, what's different, and if you need to comply with both",
+      "target_persona": "IT/ITES companies, Indian MNC subsidiaries, SaaS companies with EU clients",
+      "pillar_word_count": 4000,
+      "cluster_pages": [
+        {
+          "slug": "gdpr-compliance-tool-india",
+          "title": "GDPR Compliance Tool for Indian Companies — What You Actually Need",
+          "keyword": "GDPR compliance tool India",
+          "intent": "transactional",
+          "word_count": 1000,
+          "content_angle": "Indian IT companies processing EU data — GDPR tool requirements, India-specific context",
+          "cta": "KensaraAI covers both GDPR + DPDPA"
+        },
+        {
+          "slug": "does-gdpr-apply-in-india",
+          "title": "Does GDPR Apply to Indian Companies? — Complete Answer for 2025",
+          "keyword": "does GDPR apply to Indian companies",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "GDPR's extraterritorial reach — when Indian companies must comply, Article 3 explained",
+          "cta": "GDPR readiness assessment for Indian firms"
+        },
+        {
+          "slug": "gdpr-data-transfer-india",
+          "title": "GDPR Data Transfers from EU to India — SCCs, Adequacy, and What to Do Now",
+          "keyword": "GDPR data transfer India",
+          "intent": "informational",
+          "word_count": 1000,
+          "content_angle": "EU-India data transfer mechanisms, adequacy decision status, SCC implementation",
+          "cta": "Data transfer compliance audit"
+        },
+        {
+          "slug": "dpdpa-vs-gdpr-data-subject-rights",
+          "title": "Data Subject Rights — DPDPA vs GDPR Comparison Table",
+          "keyword": "data subject rights DPDPA vs GDPR",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "Side-by-side comparison of rights under both laws — access, correction, erasure, portability",
+          "cta": "Automate rights requests under both laws"
+        },
+        {
+          "slug": "dpdpa-vs-gdpr-consent",
+          "title": "Consent Rules — DPDPA vs GDPR: Key Differences Indian Companies Miss",
+          "keyword": "DPDPA consent vs GDPR consent",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Consent lawful basis differences — GDPR's 6 lawful bases vs DPDPA's consent-forward model",
+          "cta": "Consent management for both laws"
+        },
+        {
+          "slug": "dpdpa-vs-gdpr-breach-notification",
+          "title": "Breach Notification — DPDPA vs GDPR: 72 Hours or More?",
+          "keyword": "DPDPA breach notification timeline",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Notification timelines, who to notify, what to include — practical comparison",
+          "cta": "Automate 72-hour breach clock"
+        },
+        {
+          "slug": "gdpr-dpo-india",
+          "title": "Appointing a DPO in India — DPDPA vs GDPR Requirements",
+          "keyword": "DPO appointment India DPDPA",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "DPO requirement under DPDPA vs GDPR — same role, different trigger thresholds",
+          "cta": "DPO toolkit from KensaraAI"
+        },
+        {
+          "slug": "ccpa-compliance-india",
+          "title": "CCPA Compliance for Indian Companies — Do You Need to Comply?",
+          "keyword": "CCPA compliance India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "CCPA applicability to Indian companies with US customers — SaaS, apps, services",
+          "cta": "GDPR + DPDPA + CCPA in one platform"
+        },
+        {
+          "slug": "multi-jurisdiction-compliance-india",
+          "title": "Managing DPDPA + GDPR + CCPA Compliance Together — Indian Company Playbook",
+          "keyword": "multi-jurisdiction data compliance India",
+          "intent": "informational + transactional",
+          "word_count": 1000,
+          "content_angle": "How Indian tech companies handle 3 laws at once — without 3 different tools",
+          "cta": "One platform for all three laws"
+        },
+        {
+          "slug": "gdpr-fines-india-companies",
+          "title": "GDPR Fines That Hit Indian Companies — Case Study Analysis",
+          "keyword": "GDPR fines Indian companies",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "Real GDPR actions affecting Indian IT/ITES subsidiaries and how to avoid the same",
+          "cta": "GDPR compliance audit for IT companies"
+        }
+      ]
+    },
+    {
+      "id": "dsar-automation",
+      "pillar_page": "/dsar-automation-india",
+      "primary_keyword": "DSAR automation software India",
+      "secondary_keywords": ["DSAR management tool", "data subject access request software", "DSAR compliance India"],
+      "intent": "transactional",
+      "search_volume_estimate": "medium",
+      "competition": "low",
+      "content_angle": "How Indian companies automate DSAR fulfilment within the 30-day DPDPA deadline — end-to-end",
+      "target_persona": "DPO, Legal Operations, HR/Compliance teams at mid-to-large Indian enterprises",
+      "pillar_word_count": 3500,
+      "cluster_pages": [
+        {
+          "slug": "what-is-dsar",
+          "title": "What is a DSAR? — Data Subject Access Request Explained for India",
+          "keyword": "what is DSAR India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Plain English: what DSARs are, who can make one, what companies must do, Indian context",
+          "cta": "See DSAR automation demo"
+        },
+        {
+          "slug": "dsar-response-time-india",
+          "title": "DSAR Response Time Under DPDPA — 30 Days and What Happens If You Miss It",
+          "keyword": "DSAR response time India DPDPA",
+          "intent": "fear-based / informational",
+          "word_count": 800,
+          "content_angle": "Deadline, extension rules, penalty for missing, and how to operationalise 30-day compliance",
+          "cta": "Automate DSAR clock with KensaraAI"
+        },
+        {
+          "slug": "dsar-process-for-companies",
+          "title": "DSAR Process for Indian Companies — Step-by-Step Workflow",
+          "keyword": "DSAR process India",
+          "intent": "informational",
+          "word_count": 1000,
+          "content_angle": "8-step DSAR handling workflow from receipt to fulfilment — template included",
+          "cta": "Automate this entire workflow"
+        },
+        {
+          "slug": "dsar-template-india",
+          "title": "DSAR Response Template India — Free Download for DPOs",
+          "keyword": "DSAR template India",
+          "intent": "informational / lead magnet",
+          "word_count": 800,
+          "content_angle": "Free DSAR response template + explainer of each required section",
+          "cta": "Download template + book demo"
+        },
+        {
+          "slug": "dsar-employee-data-india",
+          "title": "DSAR for Employee Data in India — HR's DPDPA Obligations",
+          "keyword": "DSAR employee data India",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "HR-focused: employee DSARs, payroll data, performance records — obligations and workflow",
+          "cta": "HR DSAR automation module"
+        },
+        {
+          "slug": "dsar-volume-management",
+          "title": "Managing High DSAR Volume — How Indian Enterprises Handle DSARs at Scale",
+          "keyword": "high volume DSAR management",
+          "intent": "informational + transactional",
+          "word_count": 900,
+          "content_angle": "Operational challenge of 100+ DSARs/month — manual vs automated comparison",
+          "cta": "KensaraAI handles unlimited DSARs"
+        },
+        {
+          "slug": "dsar-right-to-erasure-india",
+          "title": "Right to Erasure Under DPDPA — How to Execute Deletion Requests",
+          "keyword": "right to erasure India DPDPA",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "Erasure requests: what must be deleted, exceptions, cascade deletion across systems",
+          "cta": "Erasure workflow automation"
+        },
+        {
+          "slug": "dsar-exemptions-india",
+          "title": "DSAR Exemptions Under DPDPA — When Can You Refuse a Request?",
+          "keyword": "DSAR exemptions India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Legal basis for refusing DSARs: national security, legal proceedings, public interest",
+          "cta": "DPO decision support tool"
+        },
+        {
+          "slug": "dsar-software-comparison",
+          "title": "DSAR Software Comparison 2025 — OneTrust vs TrustArc vs KensaraAI",
+          "keyword": "DSAR software comparison India",
+          "intent": "transactional",
+          "word_count": 1200,
+          "content_angle": "Feature-by-feature comparison for Indian companies — India context, pricing, AI automation",
+          "cta": "Try KensaraAI free"
+        },
+        {
+          "slug": "dsar-audit-trail",
+          "title": "DSAR Audit Trail — What Records You Must Keep Under DPDPA",
+          "keyword": "DSAR audit trail India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "What to log, how long to retain, how to prove compliance to the Data Protection Board",
+          "cta": "Audit trail built into KensaraAI"
+        }
+      ]
+    },
+    {
+      "id": "data-breach-notification",
+      "pillar_page": "/data-breach-notification-india",
+      "primary_keyword": "data breach notification India",
+      "secondary_keywords": ["data breach notification software India", "CERT-In breach reporting", "72 hour breach notification DPDPA"],
+      "intent": "informational + transactional",
+      "search_volume_estimate": "medium-high",
+      "competition": "low",
+      "content_angle": "Complete guide to data breach notification in India — DPDPA, CERT-In 6-hour rule, and 72-hour clock explained",
+      "target_persona": "CISO, DPO, Legal Counsel at Indian enterprises",
+      "pillar_word_count": 3500,
+      "cluster_pages": [
+        {
+          "slug": "cert-in-breach-reporting-6-hours",
+          "title": "CERT-In 6-Hour Breach Reporting Rule — What Indian Companies Must Do",
+          "keyword": "CERT-In breach reporting 6 hours",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "The 6-hour CERT-In rule vs 72-hour DPDPA/GDPR — dual obligation for Indian companies",
+          "cta": "Automate CERT-In reporting"
+        },
+        {
+          "slug": "dpdpa-72-hour-breach-notification",
+          "title": "DPDPA 72-Hour Breach Notification — What the Clock Means for Your Company",
+          "keyword": "DPDPA 72 hour breach notification",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "When the clock starts, what to include in notification, who to notify, what if you miss it",
+          "cta": "Auto-start breach clock with KensaraAI"
+        },
+        {
+          "slug": "data-breach-response-plan-india",
+          "title": "Data Breach Response Plan for Indian Companies — Template & Workflow",
+          "keyword": "data breach response plan India",
+          "intent": "informational / lead magnet",
+          "word_count": 1200,
+          "content_angle": "Incident response template: detection → containment → notification → post-incident",
+          "cta": "Download IRP template + see KensaraAI breach module"
+        },
+        {
+          "slug": "data-breach-notification-software",
+          "title": "Data Breach Notification Software India — Automate the 72-Hour Clock",
+          "keyword": "data breach notification software India",
+          "intent": "transactional",
+          "word_count": 900,
+          "content_angle": "Tools that automate breach detection, classification, and CERT-In/DPBI notification",
+          "cta": "KensaraAI breach module demo"
+        },
+        {
+          "slug": "india-data-breach-cases-2024",
+          "title": "India's Biggest Data Breaches 2024 — What Companies Got Wrong",
+          "keyword": "India data breach 2024",
+          "intent": "informational",
+          "word_count": 1000,
+          "content_angle": "Real cases: Star Health 31M, Boat 7.5M, ICMR 815M — root causes and lessons",
+          "cta": "Breach prevention audit"
+        },
+        {
+          "slug": "what-is-a-data-breach-india",
+          "title": "What Is a Data Breach Under DPDPA? — Legal Definition for Indian Companies",
+          "keyword": "data breach definition India DPDPA",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "DPDPA's definition vs GDPR vs CERT-In — what counts as a notifiable breach",
+          "cta": "Breach classification tool"
+        },
+        {
+          "slug": "data-breach-penalty-india",
+          "title": "Data Breach Penalties in India — DPDPA, CERT-In, and Sector Rules",
+          "keyword": "data breach penalty India",
+          "intent": "fear-based / informational",
+          "word_count": 900,
+          "content_angle": "₹250 crore DPDPA max, CERT-In penalties, sector-specific RBI/IRDAI/SEBI fines",
+          "cta": "Penalty risk assessment"
+        },
+        {
+          "slug": "healthcare-data-breach-india",
+          "title": "Healthcare Data Breach in India — DPDPA + IRDAI Dual Obligations",
+          "keyword": "healthcare data breach India",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "Health data as sensitive category — Star Health case analysis, IRDAI cybersecurity circular obligations",
+          "cta": "Healthcare breach response module"
+        },
+        {
+          "slug": "third-party-data-breach-india",
+          "title": "Third-Party Data Breach — Who Is Liable Under DPDPA?",
+          "keyword": "third party data breach liability India",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "Data fiduciary vs data processor liability — vendor risk management obligations",
+          "cta": "Vendor compliance monitoring"
+        },
+        {
+          "slug": "breach-notification-template-india",
+          "title": "Data Breach Notification Template India — Free Download",
+          "keyword": "breach notification template India",
+          "intent": "informational / lead magnet",
+          "word_count": 800,
+          "content_angle": "Notification letter templates for: data principal, Data Protection Board, CERT-In",
+          "cta": "Download + book demo"
+        }
+      ]
+    },
+    {
+      "id": "consent-management",
+      "pillar_page": "/consent-management-platform-india",
+      "primary_keyword": "consent management platform India",
+      "secondary_keywords": ["cookie consent India DPDPA", "consent management software India", "DPDPA consent manager"],
+      "intent": "transactional + informational",
+      "search_volume_estimate": "medium",
+      "competition": "low",
+      "content_angle": "Complete guide to DPDPA consent management — what it requires, how to implement, what tools exist in India",
+      "target_persona": "Marketing, Product, and Legal teams at Indian B2C companies",
+      "pillar_word_count": 3000,
+      "cluster_pages": [
+        {
+          "slug": "cookie-consent-india-dpdpa",
+          "title": "Cookie Consent in India Under DPDPA — What Your Website Must Do",
+          "keyword": "cookie consent India DPDPA",
+          "intent": "informational + transactional",
+          "word_count": 900,
+          "content_angle": "DPDPA + IT Rules 2021 cookie requirements — consent banner requirements for Indian websites",
+          "cta": "Deploy DPDPA-compliant consent banner"
+        },
+        {
+          "slug": "consent-manager-india",
+          "title": "Consent Manager India — DPDPA's New Intermediary Explained",
+          "keyword": "consent manager India DPDPA",
+          "intent": "informational",
+          "word_count": 1000,
+          "content_angle": "DPDPA's novel 'consent manager' concept — what it is, who can be one, how it works",
+          "cta": "KensaraAI Consent Manager module"
+        },
+        {
+          "slug": "consent-management-platform-comparison",
+          "title": "Consent Management Platform Comparison India — 2025",
+          "keyword": "consent management platform comparison India",
+          "intent": "transactional",
+          "word_count": 1000,
+          "content_angle": "Comparison: OneTrust CMP vs Cookiebot vs KensaraAI — India context, DPDPA compliance",
+          "cta": "Try KensaraAI consent module"
+        },
+        {
+          "slug": "revoking-consent-india",
+          "title": "Revoking Consent Under DPDPA — What Companies Must Do When Users Opt Out",
+          "keyword": "consent withdrawal DPDPA India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Easy consent withdrawal requirement — technical implementation, downstream data deletion",
+          "cta": "Consent withdrawal automation"
+        },
+        {
+          "slug": "consent-for-children-india-dpdpa",
+          "title": "Children's Data and Consent Under DPDPA — Parental Consent Requirements",
+          "keyword": "children data consent India DPDPA",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "DPDPA's strict rules for under-18 data — verifiable parental consent, age-gating",
+          "cta": "Children's data compliance module"
+        },
+        {
+          "slug": "privacy-notice-india-dpdpa",
+          "title": "Privacy Notice Requirements Under DPDPA — What Must It Contain?",
+          "keyword": "privacy notice DPDPA India",
+          "intent": "informational",
+          "word_count": 900,
+          "content_angle": "Mandatory privacy notice elements, plain language requirement, machine-readable format",
+          "cta": "Privacy notice generator"
+        },
+        {
+          "slug": "marketing-consent-india",
+          "title": "Marketing Consent in India Under DPDPA — Email, SMS, and WhatsApp",
+          "keyword": "marketing consent India DPDPA",
+          "intent": "informational + transactional",
+          "word_count": 900,
+          "content_angle": "Marketing teams: when consent is needed, how to capture it, TRAI DND + DPDPA layering",
+          "cta": "Marketing consent management"
+        },
+        {
+          "slug": "hrms-employee-consent-india",
+          "title": "Employee Consent Under DPDPA — What HR Systems Must Implement",
+          "keyword": "employee consent DPDPA India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Employee data processing consent — is consent even the right lawful basis? HR context",
+          "cta": "HR module for DPDPA"
+        },
+        {
+          "slug": "consent-audit-india",
+          "title": "Consent Audit Under DPDPA — How to Prove You Got Valid Consent",
+          "keyword": "consent audit India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "Audit trail requirements for consent — timestamp, IP, version of notice accepted",
+          "cta": "Consent audit dashboard"
+        },
+        {
+          "slug": "implicit-vs-explicit-consent-india",
+          "title": "Implicit vs Explicit Consent — What DPDPA Requires for Indian Companies",
+          "keyword": "explicit consent DPDPA India",
+          "intent": "informational",
+          "word_count": 800,
+          "content_angle": "DPDPA's explicit consent requirement — pre-ticked boxes and bundled consent banned",
+          "cta": "Compliant consent implementation guide"
+        },
+        {
+          "slug": "consent-management-for-saas-india",
+          "title": "Consent Management for SaaS Companies in India — B2B vs B2C Obligations",
+          "keyword": "consent management SaaS India",
+          "intent": "informational + transactional",
+          "word_count": 900,
+          "content_angle": "SaaS nuance: when you're data fiduciary vs processor, how consent flows change",
+          "cta": "SaaS compliance module"
+        }
+      ]
+    }
+  ],
+  "quick_win_keywords": [
+    {
+      "keyword": "DPDPA rules 2025",
+      "intent": "informational",
+      "competition": "low",
+      "opportunity": "Rules in draft — high search intent around finalisation"
+    },
+    {
+      "keyword": "data localisation India",
+      "intent": "informational",
+      "competition": "medium",
+      "opportunity": "DPDPA expected to introduce localisation requirements"
+    },
+    {
+      "keyword": "KensaraAI review",
+      "intent": "brand / transactional",
+      "competition": "zero",
+      "opportunity": "Own branded search before competitors can create negative content"
+    },
+    {
+      "keyword": "DPDPA enforcement date",
+      "intent": "informational",
+      "competition": "low",
+      "opportunity": "High anxiety search — companies want to know when they must comply"
+    },
+    {
+      "keyword": "India privacy law 2025",
+      "intent": "informational",
+      "competition": "low",
+      "opportunity": "International companies entering India look for this"
+    }
+  ]
+}

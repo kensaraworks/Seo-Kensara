@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Schedule — KensaraAI{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="page-title">Schedule</div>
+  <div class="page-sub">Jobs run automatically. Use "Run Now" to trigger manually.</div>
+</div>
+
+<div class="page-content" style="display:flex;flex-direction:column;gap:20px;">
+
+  <!-- Jobs table -->
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Schedule</th>
+          <th>Last run</th>
+          <th>Status</th>
+          <th>Output</th>
+          <th style="text-align:right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td>
+            <div style="font-size:13px;font-weight:600;color:#e2e8f0;">{{ job.name }}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px;max-width:280px;line-height:1.4;">{{ job.description }}</div>
+          </td>
+          <td>
+            <div style="font-size:12px;font-weight:500;color:rgba(255,255,255,0.6);">{{ job.schedule }}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.2);font-family:monospace;margin-top:2px;">{{ job.cron }}</div>
+          </td>
+          <td>
+            {% if job.last_run == 'Never' %}
+            <span style="font-size:12px;color:rgba(255,255,255,0.2);font-style:italic;">Never</span>
+            {% else %}
+            <span style="font-size:12px;color:rgba(255,255,255,0.45);">{{ job.last_run }}</span>
+            {% if job.duration_ms %}<div style="font-size:11px;color:rgba(255,255,255,0.2);margin-top:2px;">{{ job.duration_ms }}ms</div>{% endif %}
+            {% endif %}
+          </td>
+          <td>
+            {% if job.last_status == 'ok' %}
+            <span class="badge badge-approved">OK</span>
+            {% elif job.last_status == 'error' %}
+            <span class="badge badge-rejected">Error</span>
+            {% else %}
+            <span style="font-size:11px;color:rgba(255,255,255,0.2);">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <span style="font-size:12px;color:rgba(255,255,255,0.35);">
+              {% if job.item_count %}{{ job.item_count }} item{{ 's' if job.item_count != 1 }}{% else %}—{% endif %}
+            </span>
+          </td>
+          <td style="text-align:right;">
+            <button class="btn btn-indigo btn-sm" onclick="runJob('{{ job.id }}', this)">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Now
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Info row -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div class="card">
+      <div class="section-title">How it works</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        {% for line in [
+          'Scheduler starts automatically when you run python src/main.py',
+          'All times are IST. Daily news scan at 08:00, blog at 08:15.',
+          'Approved content goes to drafts/ — you publish manually for now.',
+          '"Run Now" triggers the job immediately, ignoring the schedule.'
+        ] %}
+        <div style="display:flex;gap:10px;">
+          <div style="width:5px;height:5px;border-radius:50%;background:rgba(99,102,241,0.6);flex-shrink:0;margin-top:5px;"></div>
+          <span style="font-size:12px;color:rgba(255,255,255,0.4);line-height:1.5;">{{ line }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">Phase rollout</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        {% for name, phase, live in [
+          ('News scanner', 'Phase 1', true),
+          ('Blog writer', 'Phase 1', true),
+          ('LinkedIn posts', 'Phase 2', false),
+          ('Newsletter', 'Phase 3', false)
+        ] %}
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:12px;color:rgba(255,255,255,{{ '0.65' if live else '0.3' }});">{{ name }}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:rgba(255,255,255,0.2);">{{ phase }}</span>
+            <span class="pulse-dot {{ 'green' if live else '' }}" style="{{ '' if live else 'background:rgba(255,255,255,0.15);animation:none;' }}"></span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

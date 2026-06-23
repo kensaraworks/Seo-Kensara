@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: kensarai-seo-agent
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.ui.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: WORDPRESS_URL
+        value: https://kensara.in
+      - key: WORDPRESS_USER
+        sync: false
+      - key: WORDPRESS_APP_PASSWORD
+        sync: false
+      - key: CONTENT_OUTPUT_DIR
+        value: drafts
+      - key: BLOG_CADENCE
+        value: daily
+      - key: TZ
+        value: Asia/Kolkata
+    disk:
+      name: drafts
+      mountPath: /app/drafts
+      sizeGB: 1
