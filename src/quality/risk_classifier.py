@@ -117,6 +117,7 @@ def classify_content_risk(
     content_type: str,  # "blog" | "linkedin" | "newsletter" | "pillar" | "comparison"
     content: str,
     keyword: str = "",
+    intent_type: str = "informational",
 ) -> RiskAssessment:
     """Classify risk level of generated content.
 
@@ -149,7 +150,10 @@ def classify_content_risk(
     # Competitor names
     for name in COMPETITOR_NAMES:
         if name in content_lower:
-            high_signals.append(f"Contains competitor name: '{name}'")
+            msg = f"Contains competitor name: '{name}'"
+            if intent_type == "commercial":
+                msg += " (COMMERCIAL intent makes this HIGH risk)"
+            high_signals.append(msg)
 
     # Pricing claims
     for pattern in PRICING_PATTERNS:

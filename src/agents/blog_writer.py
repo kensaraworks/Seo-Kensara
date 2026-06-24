@@ -6,7 +6,7 @@ Fallback LLM: NVIDIA NIM (mistralai/mistral-medium-3.5-128b) — slower free tie
 Context injected from src.context.builder — single source of truth for brand facts.
 """
 import json
-
+import re
 import structlog
 from groq import AsyncGroq
 from openai import AsyncOpenAI
@@ -15,19 +15,9 @@ from pydantic import BaseModel
 from src.agents.news_scout import ScoredNewsItem
 from src.config import settings
 from src.context.builder import build_context
+from src.agents.intent_classifier import IntentType
 
 log = structlog.get_logger()
-
-KEYWORD_ROTATION = [
-    "DPDPA compliance software",
-    "DSAR automation India",
-    "consent management platform India",
-    "data breach notification software India",
-    "DPDPA compliance checklist",
-    "GDPR compliance tool India",
-    "DPIA assessment India",
-    "DPDPA vs GDPR",
-]
 
 
 class BlogPost(BaseModel):
@@ -61,7 +51,12 @@ def _get_nvidia_client() -> AsyncOpenAI:
 
 # --- Public API ---
 
-async def generate_blog_post(news_item: ScoredNewsItem, keyword: str) -> BlogPost:
+async def generate_blog_post(
+    news_item: ScoredNewsItem, 
+    keyword: str,
+    intent_type: str = IntentType.INFORMATIONAL.value,
+    paa_questions: list[str] | None = None
+) -> BlogPost:
     """Generate a complete SEO blog post from a news item + target keyword.
 
     Tries NVIDIA NIM first. If that raises any exception, retries once with Groq.
@@ -75,7 +70,7 @@ async def generate_blog_post(news_item: ScoredNewsItem, keyword: str) -> BlogPos
     )
 
     try:
-        post = await _generate_with_groq(news_item, keyword, context_str)
+        post = await _generate_with_groq(news_item, keyword, context_str, intent_type, paa_questions)
         log.info("blog_groq_success", keyword=keyword)
     except Exception as exc:
         log.warning(
@@ -83,7 +78,7 @@ async def generate_blog_post(news_item: ScoredNewsItem, keyword: str) -> BlogPos
             error=str(exc),
             keyword=keyword,
         )
-        post = await _generate_with_nvidia(news_item, keyword, context_str)
+        post = await _generate_with_nvidia(news_item, keyword, context_str, intent_type, paa_questions)
         log.info("blog_nvidia_fallback_success", keyword=keyword)
 
     return post
@@ -92,22 +87,32 @@ async def generate_blog_post(news_item: ScoredNewsItem, keyword: str) -> BlogPos
 # --- NVIDIA NIM generation path ---
 
 async def _generate_with_nvidia(
-    news_item: ScoredNewsItem, keyword: str, context_str: str
+    news_item: ScoredNewsItem, 
+    keyword: str, 
+    context_str: str,
+    intent_type: str,
+    paa_questions: list[str] | None
 ) -> BlogPost:
     """Full 3-step generation: outline → content → meta. Uses NVIDIA NIM."""
     client = _get_nvidia_client()
 
-    outline = await _generate_outline_nvidia(client, news_item, keyword)
-    content = await _generate_content_nvidia(client, outline, news_item, keyword, context_str)
+    outline = await _generate_outline_nvidia(client, news_item, keyword, intent_type, paa_questions)
+    content = await _generate_content_nvidia(client, outline, news_item, keyword, context_str, intent_type)
     meta = await _generate_meta_nvidia(client, content, keyword)
 
-    return _assemble_post(keyword, content, meta)
+    cta_url = "https://kensara.in/request-demo"
+    if intent_type == IntentType.INFORMATIONAL.value:
+        cta_url = "https://kensara.in/resources"
+    elif intent_type == IntentType.COMMERCIAL.value:
+        cta_url = "https://kensara.in/features"
+        
+    return _assemble_post(keyword, content, meta, cta_url)
 
 
 async def _generate_outline_nvidia(
-    client: AsyncOpenAI, news: ScoredNewsItem, keyword: str
+    client: AsyncOpenAI, news: ScoredNewsItem, keyword: str, intent_type: str, paa_questions: list[str] | None
 ) -> str:
-    prompt = _outline_prompt(keyword, news)
+    prompt = _outline_prompt(keyword, news, intent_type, paa_questions)
     response = await client.chat.completions.create(
         model=settings.nvidia_model_blog,
         messages=[{"role": "user", "content": prompt}],
@@ -123,8 +128,9 @@ async def _generate_content_nvidia(
     news: ScoredNewsItem,
     keyword: str,
     context_str: str,
+    intent_type: str,
 ) -> str:
-    prompt = _content_prompt(outline, news, keyword, context_str)
+    prompt = _content_prompt(outline, news, keyword, context_str, intent_type)
     response = await client.chat.completions.create(
         model=settings.nvidia_model_blog,
         messages=[{"role": "user", "content": prompt}],
@@ -152,22 +158,32 @@ async def _generate_meta_nvidia(
 # --- Groq fallback generation path ---
 
 async def _generate_with_groq(
-    news_item: ScoredNewsItem, keyword: str, context_str: str
+    news_item: ScoredNewsItem, 
+    keyword: str, 
+    context_str: str,
+    intent_type: str,
+    paa_questions: list[str] | None
 ) -> BlogPost:
     """Full 3-step generation using Groq (llama-3.3-70b-versatile) as fallback."""
     client = _get_groq_client()
 
-    outline = await _generate_outline_groq(client, news_item, keyword)
-    content = await _generate_content_groq(client, outline, news_item, keyword, context_str)
+    outline = await _generate_outline_groq(client, news_item, keyword, intent_type, paa_questions)
+    content = await _generate_content_groq(client, outline, news_item, keyword, context_str, intent_type)
     meta = await _generate_meta_groq(client, content, keyword)
 
-    return _assemble_post(keyword, content, meta)
+    cta_url = "https://kensara.in/request-demo"
+    if intent_type == IntentType.INFORMATIONAL.value:
+        cta_url = "https://kensara.in/resources"
+    elif intent_type == IntentType.COMMERCIAL.value:
+        cta_url = "https://kensara.in/features"
+
+    return _assemble_post(keyword, content, meta, cta_url)
 
 
 async def _generate_outline_groq(
-    client: AsyncGroq, news: ScoredNewsItem, keyword: str
+    client: AsyncGroq, news: ScoredNewsItem, keyword: str, intent_type: str, paa_questions: list[str] | None
 ) -> str:
-    prompt = _outline_prompt(keyword, news)
+    prompt = _outline_prompt(keyword, news, intent_type, paa_questions)
     response = await client.chat.completions.create(
         model=settings.groq_model,
         messages=[{"role": "user", "content": prompt}],
@@ -183,8 +199,9 @@ async def _generate_content_groq(
     news: ScoredNewsItem,
     keyword: str,
     context_str: str,
+    intent_type: str,
 ) -> str:
-    prompt = _content_prompt(outline, news, keyword, context_str)
+    prompt = _content_prompt(outline, news, keyword, context_str, intent_type)
     response = await client.chat.completions.create(
         model=settings.groq_model,
         messages=[{"role": "user", "content": prompt}],
@@ -211,28 +228,45 @@ async def _generate_meta_groq(
 
 # --- Shared prompt builders ---
 
-def _outline_prompt(keyword: str, news: ScoredNewsItem) -> str:
+def _outline_prompt(keyword: str, news: ScoredNewsItem, intent_type: str, paa_questions: list[str] | None) -> str:
+    paa_section = ""
+    if paa_questions:
+        paa_section = "\nMust Include these exact H3 Questions (People Also Ask):\n" + "\n".join([f"- ### {q}" for q in paa_questions])
+
     return f"""Create a blog post outline for an SEO article targeting Indian compliance buyers.
 
 Primary keyword: {keyword}
+Intent Type: {intent_type}
 News angle: {news.suggested_angle}
 News source: {news.item.title} ({news.item.source})
 
-Outline format:
+Outline format guidelines based on Intent Type:
+- INFORMATIONAL: Educational structure, no hard CTA until the very end.
+- COMMERCIAL: Feature comparison structure, pros/cons, alternatives.
+- TRANSACTIONAL: Problem/solution structure, social proof, hard CTA.
+
+Must include:
 - H1 title (60-70 chars, includes keyword)
 - Intro hook (fear/urgency — reference the news)
-- H2 section 1: What is [topic] / Why it matters now in India
-- H2 section 2: Step-by-step / Checklist for Indian companies
-- H2 section 3: Common mistakes Indian companies make
-- H2 section 4: How KensaraAI solves this (soft sell)
-- Conclusion + CTA to kensara.in/request-demo
+- 3 to 4 H2 sections logically structured
+{paa_section}
+- Conclusion + CTA
 
 Return the outline only. No fluff."""
 
 
 def _content_prompt(
-    outline: str, news: ScoredNewsItem, keyword: str, context_str: str
+    outline: str, news: ScoredNewsItem, keyword: str, context_str: str, intent_type: str
 ) -> str:
+    
+    intent_rules = ""
+    if intent_type == IntentType.INFORMATIONAL.value:
+        intent_rules = "- Word count: 1,500-2,500 words\n- Tone: Comprehensive, educational, no hard CTA\n- Ends with soft CTA 'Download our DPDPA checklist' linking to https://kensara.in/resources\n- Target SERP Feature: Featured Snippet (Answer Box) structure"
+    elif intent_type == IntentType.COMMERCIAL.value:
+        intent_rules = "- Word count: 1,000-1,500 words\n- Structure: Include feature comparison tables if applicable\n- Tone: Soft sell 'See how Kensara compares'\n- Ends with CTA linking to https://kensara.in/features\n- Target SERP Feature: Comparison tables for AI Overviews"
+    elif intent_type == IntentType.TRANSACTIONAL.value:
+        intent_rules = "- Word count: 800-1,200 words\n- Structure: Problem/solution, embed social proof\n- Ends with hard CTA 'Book a Free DPDPA Assessment' linking to https://kensara.in/request-demo\n- Target SERP Feature: Local Pack / High conversion snippet"
+
     return f"""Write a complete SEO blog post for KensaraAI following this outline:
 
 {outline}
@@ -245,12 +279,12 @@ Summary: {news.item.summary}
 URL: {news.item.url}
 
 Rules:
-- 800-1200 words total
+{intent_rules}
 - Primary keyword "{keyword}" appears in H1, first 100 words, and 2-3 times naturally
 - India-focused, practical, DPO-friendly tone
 - Reference the news item naturally (not forced)
-- End with strong CTA to https://kensara.in/request-demo
 - Format in clean Markdown (## for H2, ### for H3)
+- If there are PAA questions (H3), answer them directly in 40-60 words immediately below the H3.
 - No generic filler. Every paragraph must deliver value.
 - Never claim anything not listed in the KENSARAI BRAND CONTEXT above"""
 
@@ -293,23 +327,31 @@ def _parse_meta_json(raw: str, keyword: str) -> dict:
             "secondary_keywords": ["DPDPA compliance", "data privacy India", "GDPR India"],
         }
 
+def _slugify(text: str) -> str:
+    """Convert text to a URL-friendly slug."""
+    text = text.lower().strip()
+    text = re.sub(r'[^\w\s-]', '', text)
+    text = re.sub(r'[-\s]+', '-', text)
+    return text
 
-def _assemble_post(keyword: str, content: str, meta: dict) -> BlogPost:
-    """Assemble final BlogPost. Logs warning if word count is outside 800-1200 range."""
+def _assemble_post(keyword: str, content: str, meta: dict, cta_url: str = "https://kensara.in/request-demo") -> BlogPost:
+    """Assemble final BlogPost. Logs warning if word count is unusual."""
     word_count = len(content.split())
-    if word_count < 800 or word_count > 1200:
+    if word_count < 600 or word_count > 3000:
         log.warning("blog_word_count_off", word_count=word_count, keyword=keyword)
 
-    slug = keyword.lower().replace(" ", "-").replace("/", "-")
+    title = meta.get("title", f"{keyword} — Guide for Indian Companies")
+    slug = _slugify(keyword)
 
     post = BlogPost(
-        title=meta.get("title", f"{keyword} — Guide for Indian Companies"),
+        title=title,
         meta_description=meta.get("meta_description", "")[:160],
         slug=slug,
         primary_keyword=keyword,
         secondary_keywords=meta.get("secondary_keywords", []),
         content_markdown=content,
         word_count=word_count,
+        cta_url=cta_url
     )
 
     log.info("blog_write_done", title=post.title[:70], word_count=word_count, slug=slug)

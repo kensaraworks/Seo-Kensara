@@ -4,6 +4,7 @@ Scoring uses a pure Python keyword relevance function — no LLM call needed.
 This is fast, free, and deterministic. LLMs are reserved for content generation.
 """
 import asyncio
+import re
 import structlog
 from pydantic import BaseModel
 
@@ -88,15 +89,37 @@ class ScoredNewsItem(BaseModel):
     suggested_angle: str  # hook for a blog post about this story
 
 
+INDIA_SOURCES = {
+    "meity", "meity gazette", "meity press releases", "dpbi", "cert-in", "rbi",
+    "sebi", "irdai", "indian court judgments", "et tech", "livemint tech",
+    "yourstory", "inc42", "entrackr", "data security council of india"
+}
+
+INDIAN_COMPANIES = {
+    "tcs", "infosys", "wipro", "reliance", "jio", "airtel", "hdfc", "icici", "sbi",
+    "paytm", "phonepe", "zerodha", "ola", "uber india", "zomato", "swiggy", "tata",
+    "adani", "lic", "byjus", "flipkart", "meesho", "nykaa", "cred"
+}
+
+ENFORCEMENT_WORDS = {
+    "penalty", "penalize", "penalized", "fine", "fined", "adjudicate", "prosecute",
+    "enforcement", "order", "investigate", "investigation"
+}
+
+URGENCY_WORDS = {
+    "effective immediately", "deadline", "urgency", "emergency", "timeline",
+    "urgent", "immediately", "immediate"
+}
+
 def score_relevance(item: NewsItem) -> int:
     """Score a news item's relevance to Indian DPDPA/GDPR compliance buyers.
 
-    Returns an integer 0–10. Pure keyword matching — no LLM, no network call.
-    High-relevance keywords score +2 each; medium-relevance +1 each. Capped at 10.
+    Returns an integer 0–20. Pure keyword matching — no LLM, no network call.
     """
     text = (item.title + " " + item.summary).lower()
     score = 0
 
+    # 1. Base keyword checks
     for kw in HIGH_RELEVANCE_KEYWORDS:
         if kw in text:
             score += 2
@@ -105,7 +128,51 @@ def score_relevance(item: NewsItem) -> int:
         if kw in text:
             score += 1
 
-    return min(10, score)
+    # 2. India-origin source (+2)
+    source_lower = item.source.lower()
+    if source_lower in INDIA_SOURCES or any(src in source_lower for src in ["meity", "dpbi", "cert-in", "rbi", "sebi", "irdai"]):
+        score += 2
+
+    # 3. Penalty amount mentioned (+3)
+    if re.search(r'(?:₹|rs\.?|rupees?|\b\d+\s*(?:lakh|crore|million|billion)\b)', text):
+        score += 3
+
+    # 4. Named Indian company involved (+2)
+    has_company = any(c in text for c in INDIAN_COMPANIES) or bool(re.search(r'\b[a-z0-9]+\s+(?:pvt\.?\s+ltd\.?|ltd\.?|llp)\b', text))
+    if has_company:
+        score += 2
+
+    # 5. Specific DPDPA Rule or Section number cited (+2)
+    if re.search(r'\b(?:section|sec\.?|rule|clause|article|art\.?)\s+\d+\b', text) or "schedule i" in text or "schedule ii" in text:
+        score += 2
+
+    # 6. Enforcement action (+2)
+    if any(w in text for w in ENFORCEMENT_WORDS):
+        score += 2
+
+    # 7. Temporal urgency signal (+2)
+    if any(w in text for w in URGENCY_WORDS):
+        score += 2
+
+    # 8. RBI + DPDPA intersection bonus (+3)
+    is_rbi = "rbi" in source_lower or "reserve bank" in source_lower
+    is_dpdpa = any(kw in text for kw in ["dpdpa", "digital personal data", "data protection board", "dpdp rules"])
+    if is_rbi and is_dpdpa:
+        score += 3
+
+    # 9. Custom source scores (+1 or +2)
+    if "iapp resources" in source_lower or "iapp.org/resources" in item.url:
+        score += 1
+    elif "privacy enforcement" in source_lower or "privacyenforcement.net" in item.url:
+        score += 1
+    elif "appa forum" in source_lower or "appaforum.org" in item.url:
+        score += 1
+    elif "dataguidance" in source_lower or "dataguidance.com" in item.url:
+        score += 2
+    elif "data security council" in source_lower or "dsci" in source_lower or "dsci.in" in item.url:
+        score += 2
+
+    return min(20, score)
 
 
 def _build_why_relevant(item: NewsItem, score: int) -> str:
@@ -176,7 +243,7 @@ async def score_news_items(items: list[NewsItem]) -> list[ScoredNewsItem]:
             score=result.relevance_score,
             source=result.item.source,
         )
-        if result.relevance_score >= 5:
+        if result.relevance_score >= 6:
             high_scoring.append(result)
 
     high_scoring.sort(key=lambda x: x.relevance_score, reverse=True)

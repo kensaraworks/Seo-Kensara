@@ -89,7 +89,7 @@ async def _draft_single_pitch(
     """Draft one personalized pitch email for a specific outlet."""
     prefix = "EXCLUSIVE" if urgency == "breaking" else "PITCH"
 
-    prompt = f"""You are writing a press pitch email on behalf of Harjinder Singh, CEO of KensaraAI.
+    prompt = f"""You are writing a press pitch email on behalf of Prince Raj, COO & Co-Founder of KensaraAI.
 
 Target outlet: {outlet["name"]}
 Outlet beat: {outlet["beat"]}
@@ -103,11 +103,11 @@ Write a pitch email with this exact structure:
 - Subject line: [{prefix}] <compelling angle + hook, max 60 chars>
 - Body (150-200 words total):
   Line 1: Hook — the news + why it matters NOW for the outlet's audience
-  Lines 2-3: Why Harjinder Singh / KensaraAI is the right expert source on this
-  Line 4: Draft a relevant, quotable expert quote from Harjinder Singh (1-2 sentences, factual)
+  Lines 2-3: Why KensaraAI (founded by CEO Rudraksh Tatwal) is the right expert source on this
+  Line 4: Draft a relevant, quotable expert quote from CEO Rudraksh Tatwal or COO Prince Raj (1-2 sentences, factual)
   Line 5: One concrete data point or fact from the compliance/enforcement context
   Line 6: CTA — offer more context, interview, or a platform demo
-  Signature: Harjinder Singh, CEO KensaraAI | harjinder@kensara.in | +91-XXXXXXXXXX
+  Signature: Prince Raj, COO KensaraAI | prince@kensara.in | +91-XXXXXXXXXX
 
 Rules:
 - Professional journalist tone — NOT sales-y
@@ -155,7 +155,7 @@ Return JSON:
                 f"{story_title}\n\n"
                 f"{kensarai_angle}\n\n"
                 "Happy to provide expert comment or a platform demo.\n\n"
-                "Harjinder Singh, CEO KensaraAI | harjinder@kensara.in"
+                "Prince Raj, COO KensaraAI | prince@kensara.in"
             ),
             angle=kensarai_angle,
             urgency=urgency,

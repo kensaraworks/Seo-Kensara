@@ -35,6 +35,12 @@ def build_context(keyword: str = "", news_angle: str = "") -> str:
         f"DEMO URL: {facts['company']['demo_url']}\n"
     )
 
+    # --- Sitelinks ---
+    sitelinks_lines = ["SITELINKS (use these URLs for internal linking/CTAs):"]
+    for name, url in facts["sitelinks"].items():
+        sitelinks_lines.append(f"- {name.replace('_', ' ').title()}: {url}")
+    sitelinks_block = "\n".join(sitelinks_lines) + "\n"
+
     # --- What it is ---
     what_block = f"WHAT IT IS:\n{facts['what_it_is']}\n"
 
@@ -116,6 +122,7 @@ def build_context(keyword: str = "", news_angle: str = "") -> str:
     sections = [
         "=== KENSARAI BRAND CONTEXT (authoritative — use only these facts) ===",
         company_block,
+        sitelinks_block,
         what_block,
         creds_block,
         modules_block,

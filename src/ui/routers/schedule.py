@@ -49,6 +49,13 @@ JOBS = [
         "schedule": "1st of month 09:00 IST",
         "cron": "0 9 1 * *",
     },
+    {
+        "id": "regulatory_poll",
+        "name": "Regulatory feed poll",
+        "description": "Polls regulatory feeds every 4 hours for critical stories (score >= 12) to trigger immediate newsjacking.",
+        "schedule": "Every 4 hours",
+        "cron": "0 */4 * * *",
+    },
 ]
 
 
@@ -302,7 +309,9 @@ async def _dispatch_job(job_id: str) -> dict:
     if job_id == "linkedin_posts":
         return {"count": 0, "message": "LinkedIn writer not yet implemented (Phase 2)"}
 
-    if job_id == "newsletter":
-        return {"count": 0, "message": "Newsletter writer not yet implemented (Phase 3)"}
+    if job_id == "regulatory_poll":
+        from src.main import run_regulatory_poll
+        await run_regulatory_poll()
+        return {"count": 1, "message": "Regulatory poll run completed."}
 
     return {"count": 0, "message": f"No handler for job {job_id}"}

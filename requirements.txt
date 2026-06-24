@@ -44,3 +44,6 @@ pytest-mock==3.14.0
 
 # Dev tools
 python-dotenv==1.0.1
+
+pytrends==4.9.2
+tavily-python==0.3.3

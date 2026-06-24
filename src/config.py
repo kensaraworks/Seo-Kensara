@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Serper.dev — Google rank tracking (2500 free queries)
     serper_api_key: str = Field("", env="SERPER_API_KEY")
 
+    # Perplexity API — AI citation monitoring
+    perplexity_api_key: str = Field("", env="PERPLEXITY_API_KEY")
+
     # WordPress — kensara.in
     wordpress_url: str = Field("https://kensara.in", env="WORDPRESS_URL")
     wordpress_user: str = Field("", env="WORDPRESS_USER")

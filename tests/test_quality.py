@@ -14,7 +14,7 @@ from src.quality.risk_classifier import classify_content_risk, RiskLevel
 
 def test_quality_passes_good_post(sample_blog_post):
     """A well-structured, keyword-rich post should pass with score >= 0.60."""
-    result = check_blog_quality(sample_blog_post, "DPDPA compliance software")
+    result = check_blog_quality(sample_blog_post, "DPDPA compliance software", intent_type="transactional")
 
     assert isinstance(result, QualityResult)
     assert result.score >= 0.60, (

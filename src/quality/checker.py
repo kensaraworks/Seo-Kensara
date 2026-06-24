@@ -70,7 +70,7 @@ class QualityResult(BaseModel):
     signals: dict          # detailed breakdown by category
 
 
-def check_blog_quality(post: BlogPost, keyword: str) -> QualityResult:
+def check_blog_quality(post: BlogPost, keyword: str, intent_type: str = "informational") -> QualityResult:
     """Evaluate blog post quality across 5 weighted categories (100 pts total).
 
     Categories:
@@ -202,7 +202,7 @@ def check_blog_quality(post: BlogPost, keyword: str) -> QualityResult:
     structure_signals["has_conclusion"] = has_conclusion
 
     # ------------------------------------------------------------------ #
-    #  4. E-E-A-T signals (0-20 pts)                                       #
+    #  4. E-E-A-T signals & Intent-Specific Requirements (0-20 pts)        #
     # ------------------------------------------------------------------ #
     eeat_pts = 0
     eeat_signals: dict = {}
@@ -222,11 +222,33 @@ def check_blog_quality(post: BlogPost, keyword: str) -> QualityResult:
         eeat_pts += 5
     eeat_signals["mentions_regulatory_bodies"] = has_regulators
 
-    # Has CTA to kensara.in/request-demo
-    has_cta = "kensara.in/request-demo" in content_lower
-    if has_cta:
+    # Intent-specific structure checks
+    if intent_type == "commercial":
+        # Commercial content should have comparison tables (markdown table)
+        has_table = bool(re.search(r"\|.*\|.*\n\|[-:\s|]+\|", content))
+        if has_table:
+            eeat_pts += 5
+        eeat_signals["has_comparison_table"] = has_table
+    elif intent_type == "informational":
+        # Informational content should not have aggressive sales words
+        aggressive_sales = ["buy now", "subscribe today", "limited time offer", "purchase immediately"]
+        has_aggressive = any(term in content_lower for term in aggressive_sales)
+        if not has_aggressive:
+            eeat_pts += 5
+        eeat_signals["no_aggressive_sales"] = not has_aggressive
+    else:
+        # Default for transactional/others
         eeat_pts += 5
-    eeat_signals["has_kensarai_cta"] = has_cta
+
+    # Check correct CTA url
+    expected_cta = "kensara.in/request-demo"
+    if intent_type == "informational":
+        expected_cta = "kensara.in/resources"
+    elif intent_type == "commercial":
+        expected_cta = "kensara.in/features"
+        
+    has_cta = expected_cta in content_lower
+    eeat_signals["has_correct_cta"] = has_cta
 
     # ------------------------------------------------------------------ #
     #  5. Factual specificity (0-20 pts)                                   #
@@ -273,7 +295,7 @@ def check_blog_quality(post: BlogPost, keyword: str) -> QualityResult:
             f"Quality score {score:.2f} is below minimum threshold 0.40 — content must be rewritten"
         )
     if not has_cta:
-        issues.append("Missing CTA link to https://kensara.in/request-demo — required in every post")
+        issues.append(f"Missing correct CTA link ({expected_cta}) — required for this intent type")
     if not kw_in_h1:
         issues.append(f"Primary keyword '{keyword}' not found in H1 — critical for SEO ranking")
 

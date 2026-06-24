@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from src.main import run_news_scan, run_blog_generate
+from src.main import run_news_scan, run_blog_generate, run_regulatory_poll
 from src.ui.routers import queue, schedule, context_editor, api
 
 log = structlog.get_logger()
@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
     scheduler.add_job(run_news_scan, CronTrigger(hour=8, minute=0), id="news_scan", name="Daily news scan")
     scheduler.add_job(run_blog_generate, CronTrigger(hour=8, minute=15), id="blog_generate", name="Daily blog generation")
+    scheduler.add_job(run_regulatory_poll, CronTrigger(hour="*/4", minute=0), id="regulatory_poll", name="Regulatory feed poll")
     scheduler.start()
     log.info("seo_agent_started_via_fastapi", jobs=scheduler.get_jobs())
     yield

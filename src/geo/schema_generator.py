@@ -22,7 +22,7 @@ KENSARAI_ORG = {
     "@type": "Organization",
     "@id": "https://kensara.in/#organization",
     "name": "KensaraAI",
-    "legalName": "Tajmanor LLP",
+    "legalName": "KensaraAI Private Limited",
     "url": "https://kensara.in",
     "logo": {
         "@type": "ImageObject",

@@ -16,6 +16,21 @@ import structlog
 from pydantic import BaseModel
 
 from src.config import settings
+from src.scrapers.regulatory_scrapers import (
+    fetch_meity_gazette,
+    fetch_meity_press_releases,
+    fetch_dpbi_orders,
+    fetch_cert_in_advisories,
+    fetch_sebi_circulars,
+    fetch_irdai_circulars,
+    fetch_india_kanoon_judgments,
+    fetch_iapp_resources,
+    fetch_privacy_enforcement_press,
+    fetch_appa_forum,
+    fetch_data_guidance,
+    fetch_dsci_news,
+    NewsItem,
+)
 
 log = structlog.get_logger()
 
@@ -23,6 +38,12 @@ RSS_FEEDS = {
     "ICO": "https://ico.org.uk/about-the-ico/news-and-events/feed/",
     "EDPB": "https://www.edpb.europa.eu/edpb/rss_en",
     "IAPP": "https://iapp.org/feed/",
+    "RBI": "https://rbi.org.in/Scripts/RSSCirculars.aspx",
+    "ET Tech": "https://economictimes.indiatimes.com/tech/rssfeeds/13357555.xml",
+    "LiveMint Tech": "https://www.livemint.com/rss/technology",
+    "YourStory": "https://yourstory.com/feed",
+    "Inc42": "https://inc42.com/feed/",
+    "Entrackr": "https://entrackr.com/feed/",
 }
 
 SEARCH_TERMS = [
@@ -36,25 +57,39 @@ TAVILY_SEARCH_QUERY = (
 )
 
 
-class NewsItem(BaseModel):
-    title: str
-    url: str
-    summary: str
-    published_date: str
-    source: str
 
 
 async def fetch_rss_feeds() -> list[NewsItem]:
-    """Fetch all RSS feeds + optional Tavily results. Return deduplicated news items."""
-    cache_file = Path(settings.content_output_dir) / ".cache" / f"news_{date.today()}.json"
+    """Fetch all RSS feeds + optional Tavily results + regulatory scrapers. Return deduplicated news items."""
+    # Use hour-based cache suffix to support 4-hour MeitY polling intervals
+    cache_suffix = f"{date.today()}_{datetime.now().hour // 4}"
+    cache_file = Path(settings.content_output_dir) / ".cache" / f"news_{cache_suffix}.json"
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
     if cache_file.exists():
-        log.info("rss_cache_hit", date=str(date.today()))
-        return [NewsItem(**item) for item in json.loads(cache_file.read_text())]
+        log.info("rss_cache_hit", date=str(date.today()), suffix=cache_suffix)
+        try:
+            return [NewsItem(**item) for item in json.loads(cache_file.read_text(encoding="utf-8"))]
+        except Exception:
+            pass
 
-    # Gather RSS feeds and optional Tavily in parallel
-    tasks = [_fetch_all_rss()]
+    # Gather RSS feeds, optional Tavily, and custom regulatory scrapers in parallel
+    tasks = [
+        _fetch_all_rss(),
+        fetch_meity_gazette(),
+        fetch_meity_press_releases(),
+        fetch_dpbi_orders(),
+        fetch_cert_in_advisories(),
+        fetch_sebi_circulars(),
+        fetch_irdai_circulars(),
+        fetch_india_kanoon_judgments(),
+        fetch_iapp_resources(),
+        fetch_privacy_enforcement_press(),
+        fetch_appa_forum(),
+        fetch_data_guidance(),
+        fetch_dsci_news(),
+    ]
+    
     if settings.tavily_api_key:
         tasks.append(_fetch_tavily())
     else:
@@ -63,9 +98,9 @@ async def fetch_rss_feeds() -> list[NewsItem]:
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     items: list[NewsItem] = []
-    for result in results:
+    for i, result in enumerate(results):
         if isinstance(result, BaseException):
-            log.error("news_source_failed", error=str(result))
+            log.error("news_source_failed", task_index=i, error=str(result))
         else:
             items.extend(result)
 
@@ -78,9 +113,44 @@ async def fetch_rss_feeds() -> list[NewsItem]:
             unique_items.append(item)
 
     relevant = _filter_relevant(unique_items)
-    cache_file.write_text(json.dumps([i.model_dump() for i in relevant]))
-    log.info("rss_done", total=len(unique_items), relevant=len(relevant))
-    return relevant
+    
+    # Deduplicate against db historical items using Cosine Similarity & URL/ID check
+    from src.queue.job_queue import job_queue
+    from src.scrapers.deduplicator import is_duplicate_story, get_word_frequencies
+    import hashlib
+    
+    recent_fps = job_queue.get_recent_processed_fingerprints()
+    recent_fps_json = [fp for _, fp in recent_fps]
+    
+    final_relevant = []
+    for item in relevant:
+        story_id = hashlib.md5(item.url.encode("utf-8")).hexdigest()
+        if job_queue.is_url_processed(item.url) or job_queue.is_story_processed(story_id):
+            log.debug("story_already_processed", url=item.url)
+            continue
+        
+        text_to_compare = item.title + " " + item.summary
+        is_dup, score = is_duplicate_story(text_to_compare, recent_fps_json)
+        if is_dup:
+            log.info("duplicate_story_suppressed", title=item.title[:60], score=score)
+            # Record as suppressed duplicate
+            job_queue.record_processed_story(
+                story_id=story_id,
+                source=item.source,
+                headline=item.title,
+                url=item.url,
+                score=0,
+                intent_tag="duplicate",
+                fingerprint_vector=json.dumps(get_word_frequencies(text_to_compare)),
+                action_taken="suppressed"
+            )
+            continue
+            
+        final_relevant.append(item)
+
+    cache_file.write_text(json.dumps([i.model_dump() for i in final_relevant]), encoding="utf-8")
+    log.info("rss_done", total=len(unique_items), relevant=len(final_relevant))
+    return final_relevant
 
 
 async def _fetch_all_rss() -> list[NewsItem]:

@@ -86,13 +86,13 @@ def test_score_relevance_returns_int(sample_news_item):
 
 
 def test_score_relevance_in_valid_range(sample_news_item):
-    """score_relevance must return a value in [0, 10]."""
+    """score_relevance must return a value in [0, 20]."""
     score = score_relevance(sample_news_item)
-    assert 0 <= score <= 10, f"Score {score} out of valid range [0, 10]"
+    assert 0 <= score <= 20, f"Score {score} out of valid range [0, 20]"
 
 
-def test_score_relevance_capped_at_10():
-    """Score must never exceed 10, even for an extremely keyword-heavy item."""
+def test_score_relevance_capped_at_20():
+    """Score must never exceed 20, even for an extremely keyword-heavy item."""
     item = NewsItem(
         title="DPDPA dpdpa meity data protection board enforcement penalty fine dsar",
         url="https://example.com/test",
@@ -105,7 +105,7 @@ def test_score_relevance_capped_at_10():
         source="Test",
     )
     score = score_relevance(item)
-    assert score <= 10, f"Score {score} exceeded maximum of 10"
+    assert score <= 20, f"Score {score} exceeded maximum of 20"
 
 
 def test_score_relevance_empty_item_scores_zero():
@@ -119,6 +119,64 @@ def test_score_relevance_empty_item_scores_zero():
     )
     score = score_relevance(item)
     assert score == 0, f"Expected 0 for empty item but got {score}"
+
+
+def test_rbi_dpdpa_intersection_scores_bonus():
+    """RBI + DPDPA intersection stories must receive a +3 score bonus."""
+    item = NewsItem(
+        title="RBI issues draft guidelines on DPDPA compliance",
+        url="https://rbi.org.in/circulars/123",
+        summary="The Reserve Bank of India has released draft rules for digital personal data protection in banks.",
+        published_date="2026-06-24",
+        source="RBI",
+    )
+    # Base source: +2
+    # DPDPA keywords (dpdpa, digital personal data): high relevance keywords: +4 (2 each)
+    # India-origin source: +2
+    # Named Indian company: 0
+    # Rule/Section: 0
+    # Enforcement: 0
+    # Urgency: 0
+    # RBI + DPDPA intersection bonus: +3
+    # Total expected score = 4 (kw) + 2 (source) + 3 (intersection) = 9
+    score = score_relevance(item)
+    assert score >= 9, f"Expected score >= 9 for RBI DPDPA intersection, got {score}"
+
+
+def test_new_sources_scoring_bonuses():
+    """Verify that new sources receive their designated custom score bonuses."""
+    # 1. iapp.org/resources (score 1)
+    iapp_res = NewsItem(
+        title="Privacy regulations overview",
+        url="https://iapp.org/resources/overview",
+        summary="A summary of privacy frameworks.",
+        published_date="2026-06-24",
+        source="IAPP Resources",
+    )
+    # expect 1 (source bonus) + 1 (medium keyword 'privacy') = 2
+    assert score_relevance(iapp_res) >= 2
+
+    # 2. dataguidance.com (score 2)
+    dataguidance = NewsItem(
+        title="Privacy regulations overview",
+        url="https://dataguidance.com/overview",
+        summary="A summary of privacy frameworks.",
+        published_date="2026-06-24",
+        source="DataGuidance",
+    )
+    # expect 2 (source bonus) + 1 (medium keyword 'privacy') = 3
+    assert score_relevance(dataguidance) >= 3
+
+    # 3. Data Security Council of India (score 2 + India origin 2)
+    dsci = NewsItem(
+        title="Privacy regulations overview",
+        url="https://dsci.in/overview",
+        summary="A summary of privacy frameworks.",
+        published_date="2026-06-24",
+        source="Data Security Council of India",
+    )
+    # expect 2 (source bonus) + 2 (India-origin bonus) + 1 (medium keyword 'privacy') = 5
+    assert score_relevance(dsci) >= 5
 
 
 # -----------------------------------------------------------------------
@@ -160,7 +218,7 @@ async def test_score_returns_empty_for_no_items():
 
 @pytest.mark.asyncio
 async def test_score_filters_below_threshold(sample_news_item):
-    """Items scoring below the threshold (< 5) must be excluded."""
+    """Items scoring below the threshold (< 6) must be excluded."""
     low_relevance_item = NewsItem(
         title="Weather update",
         url="https://example.com/weather",
@@ -169,8 +227,8 @@ async def test_score_filters_below_threshold(sample_news_item):
         source="Times of India",
     )
     result = await score_news_items([low_relevance_item])
-    assert all(r.relevance_score >= 5 for r in result), (
-        f"Expected all results to have score >= 5 but got: {[r.relevance_score for r in result]}"
+    assert all(r.relevance_score >= 6 for r in result), (
+        f"Expected all results to have score >= 6 but got: {[r.relevance_score for r in result]}"
     )
 
 
@@ -226,7 +284,7 @@ async def test_score_returns_scored_news_item_objects(sample_news_item):
 async def test_score_high_relevance_item_included(sample_news_item):
     """A clearly high-relevance item must appear in results."""
     result = await score_news_items([sample_news_item])
-    # sample_news_item is a DPDPA enforcement story — must score >= 5 and be included
+    # sample_news_item is a DPDPA enforcement story — must score >= 6 and be included
     assert len(result) >= 1, (
         f"Expected sample_news_item (DPDPA enforcement) to be included but got empty result. "
         f"Score was: {score_relevance(sample_news_item)}"

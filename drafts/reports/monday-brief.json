@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-06-24T06:10:13.809581",
+  "top_content_gaps": [
+    {
+      "id": 1,
+      "topic": "DPO Requirements",
+      "competitor_count": 3,
+      "first_seen": "2026-06-24T00:40:12.244527+00:00",
+      "kensara_coverage": "none",
+      "priority_score": 30.0,
+      "status": "open"
+    },
+    {
+      "id": 2,
+      "topic": "DPDPA Consent Rules",
+      "competitor_count": 3,
+      "first_seen": "2026-06-24T00:40:12.246736+00:00",
+      "kensara_coverage": "none",
+      "priority_score": 30.0,
+      "status": "open"
+    }
+  ],
+  "competitor_updates": [
+    "https://securiti.ai/blog/updated-dpdpa-guide"
+  ],
+  "ranking_threats": [],
+  "backlink_surges": []
+}

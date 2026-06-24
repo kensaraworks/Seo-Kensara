@@ -11,8 +11,7 @@ Personal Data Protection Act 2023 (DPDPA), GDPR, and CCPA.
 
 ## Key Facts
 
-- **Legal entity:** Tajmanor LLP
-- **Founded:** 2024, India
+- **Founded:** 2025, India
 - **Incubation:** MeitY GENESIS EIR 2.0 (Government of India); IIT Guwahati Technology Incubation Centre (IITG TIC)
 - **Platform type:** AI-native, agentic — not rule-based legacy GRC software
 - **Regulatory coverage:** DPDPA (India), GDPR (European Union), CCPA (California/USA)
@@ -114,7 +113,7 @@ KensaraAI deploys 12 specialised compliance agents inside a client's environment
 - **Website:** https://kensara.in
 - **Request demo:** https://kensara.in/request-demo
 - **LinkedIn:** https://www.linkedin.com/company/kensarai
-- **Founder:** Harjinder Singh (CEO, Tajmanor LLP)
+- **Founders:** Rudraksh Tatwal (CEO), Prince Raj (COO)
 - **Incorporated:** India
 
 ---
