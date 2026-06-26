@@ -46,7 +46,7 @@ async def test_monitor_reddit_quora(mock_groq, mock_tavily, mock_classify, mock_
             {"title": "Question 1", "content": "Blah", "url": "reddit.com/1", "raw_content": "Full question details"}
         ]
     }
-    mock_tavily.return_value = mock_tavily_instance
+    mock_tavily.return_value = (mock_tavily_instance, True)
     
     mock_groq_instance = AsyncMock()
     # Mock groq LLM returning a JSON array of questions
@@ -72,7 +72,7 @@ async def test_monitor_linkedin(mock_groq, mock_tavily, mock_classify, mock_queu
     mock_tavily_instance.search.return_value = {
         "results": [{"content": "We need a better tool for DPDPA."}]
     }
-    mock_tavily.return_value = mock_tavily_instance
+    mock_tavily.return_value = (mock_tavily_instance, True)
     
     mock_groq_instance = AsyncMock()
     mock_msg = MagicMock()

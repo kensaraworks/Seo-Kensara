@@ -137,7 +137,7 @@ automated DSAR handling, and real-time breach detection.
 
 Ready to see how KensaraAI can get your company DPDPA-ready in 30 days?
 
-[Request a Demo →](https://kensara.in/request-demo)
+[Request a Demo →](https://www.kensara.in/book-demo)
 """,
         word_count=650,
     )

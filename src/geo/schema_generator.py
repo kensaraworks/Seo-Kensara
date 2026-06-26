@@ -26,7 +26,7 @@ KENSARAI_ORG = {
     "url": "https://kensara.in",
     "logo": {
         "@type": "ImageObject",
-        "url": "https://kensara.in/logo.png",
+        "url": "https://www.kensara.in/logo_transparent_dark.png",
         "width": 512,
         "height": 512,
     },
@@ -65,12 +65,12 @@ KENSARAI_ORG = {
         },
     ],
     "sameAs": [
-        "https://www.linkedin.com/company/kensarai",
+        "https://www.linkedin.com/company/kensara-ai",
     ],
     "contactPoint": {
         "@type": "ContactPoint",
         "contactType": "sales",
-        "url": "https://kensara.in/request-demo",
+        "url": "https://www.kensara.in/book-demo",
         "availableLanguage": ["English", "Hindi"],
     },
 }
@@ -105,7 +105,7 @@ def generate_dataset_schema(tracker_data: dict[str, Any]) -> dict[str, Any]:
     return {
         "@context": "https://schema.org",
         "@type": "Dataset",
-        "@id": "https://kensara.in/dpdpa-enforcement-tracker#dataset",
+        "@id": "https://www.kensara.in/dpdpa#dataset",
         "name": "DPDPA Enforcement Actions India — KensaraAI Tracker",
         "description": (
             f"Comprehensive database of {total_actions} Indian data privacy enforcement actions. "
@@ -113,7 +113,7 @@ def generate_dataset_schema(tracker_data: dict[str, Any]) -> dict[str, Any]:
             "enforcement, RBI data localisation actions, and international GDPR fines affecting Indian companies. "
             "Maintained by KensaraAI — India's AI-native compliance platform."
         ),
-        "url": "https://kensara.in/dpdpa-enforcement-tracker",
+        "url": "https://www.kensara.in/dpdpa",
         "creator": KENSARAI_ORG,
         "publisher": KENSARAI_ORG,
         "dateModified": last_updated,
@@ -154,7 +154,7 @@ def generate_dataset_schema(tracker_data: dict[str, Any]) -> dict[str, Any]:
         "distribution": {
             "@type": "DataDownload",
             "encodingFormat": "application/json",
-            "contentUrl": "https://kensara.in/dpdpa-enforcement-tracker/data.json",
+            "contentUrl": "https://www.kensara.in/dpdpa",
         },
         "about": [
             {"@type": "Thing", "name": "Digital Personal Data Protection Act 2023"},
@@ -162,7 +162,7 @@ def generate_dataset_schema(tracker_data: dict[str, Any]) -> dict[str, Any]:
             {"@type": "Thing", "name": "CERT-In cybersecurity enforcement"},
             {"@type": "Thing", "name": "IT Act Section 43A"},
         ],
-        "citation": "KensaraAI (2024). DPDPA Enforcement Tracker. https://kensara.in/dpdpa-enforcement-tracker",
+        "citation": "KensaraAI (2024). DPDPA Enforcement Tracker. https://www.kensara.in/dpdpa",
     }
 
 
@@ -190,7 +190,7 @@ def generate_organization_schema() -> dict[str, Any]:
                     "AI-native DPDPA + GDPR + CCPA compliance platform for Indian enterprises. "
                     "Includes DSAR automation, consent management, breach notification, and GRC/DPIA modules."
                 ),
-                "url": "https://kensara.in/request-demo",
+                "url": "https://www.kensara.in/book-demo",
                 "priceCurrency": "INR",
                 "priceSpecification": {
                     "@type": "PriceSpecification",
@@ -321,7 +321,7 @@ def generate_article_schema(
     Returns:
         JSON-LD Article schema dict.
     """
-    url = f"https://kensara.in/blog/{slug}"
+    url = f"https://kensara.in/blogs/{slug}"
     if modified_date is None:
         modified_date = published_date
 
@@ -369,7 +369,7 @@ def generate_breadcrumb_schema(breadcrumbs: list[dict[str, str]]) -> dict[str, A
         breadcrumbs = [
             {"name": "Home", "url": "https://kensara.in"},
             {"name": "DPDPA Resources", "url": "https://kensara.in/dpdpa"},
-            {"name": "DPDPA Enforcement Tracker", "url": "https://kensara.in/dpdpa-enforcement-tracker"},
+            {"name": "DPDPA Enforcement Tracker", "url": "https://www.kensara.in/dpdpa"},
         ]
     """
     return {

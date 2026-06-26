@@ -16,6 +16,7 @@ import structlog
 from pydantic import BaseModel
 
 from src.config import settings
+from src.scrapers.date_utils import is_recent_enough
 from src.scrapers.regulatory_scrapers import (
     fetch_meity_gazette,
     fetch_meity_press_releases,
@@ -24,6 +25,7 @@ from src.scrapers.regulatory_scrapers import (
     fetch_sebi_circulars,
     fetch_irdai_circulars,
     fetch_india_kanoon_judgments,
+    fetch_ico_enforcement,
     fetch_iapp_resources,
     fetch_privacy_enforcement_press,
     fetch_appa_forum,
@@ -31,19 +33,21 @@ from src.scrapers.regulatory_scrapers import (
     fetch_dsci_news,
     NewsItem,
 )
+from src.scrapers.court_judgment_tracker import fetch_all_court_judgments
+from src.scrapers.india_business_news import fetch_all_india_business_news
 
 log = structlog.get_logger()
 
 RSS_FEEDS = {
-    "ICO": "https://ico.org.uk/about-the-ico/news-and-events/feed/",
-    "EDPB": "https://www.edpb.europa.eu/edpb/rss_en",
-    "IAPP": "https://iapp.org/feed/",
+    # ICO (ico.org.uk) removed RSS after 2024 site redesign — scraped via fetch_ico_enforcement()
+    # IAPP (iapp.org) has no public RSS — scraped via fetch_iapp_resources()
+    "EDPB": "https://edpb.europa.eu/feed/news_en",
     "RBI": "https://rbi.org.in/Scripts/RSSCirculars.aspx",
-    "ET Tech": "https://economictimes.indiatimes.com/tech/rssfeeds/13357555.xml",
+    "ET Tech": "https://economictimes.indiatimes.com/tech/rssfeeds/13357220.cms",
     "LiveMint Tech": "https://www.livemint.com/rss/technology",
     "YourStory": "https://yourstory.com/feed",
     "Inc42": "https://inc42.com/feed/",
-    "Entrackr": "https://entrackr.com/feed/",
+    "Entrackr": "https://entrackr.com/rss",
 }
 
 SEARCH_TERMS = [
@@ -83,11 +87,14 @@ async def fetch_rss_feeds() -> list[NewsItem]:
         fetch_sebi_circulars(),
         fetch_irdai_circulars(),
         fetch_india_kanoon_judgments(),
-        fetch_iapp_resources(),
+        fetch_ico_enforcement(),       # ICO: HTML scraper (RSS discontinued)
+        fetch_iapp_resources(),        # IAPP: HTML scraper (no public RSS)
         fetch_privacy_enforcement_press(),
         fetch_appa_forum(),
         fetch_data_guidance(),
         fetch_dsci_news(),
+        fetch_all_court_judgments(),
+        fetch_all_india_business_news(),
     ]
     
     if settings.tavily_api_key:
@@ -180,15 +187,34 @@ async def _fetch_single_rss(source: str, url: str) -> list[NewsItem]:
         # FIX: was `feedparser.parse(url)` — synchronous, blocks event loop
         feed = await asyncio.to_thread(feedparser.parse, url)
         items = []
+        # UI override for news_max_age_days takes priority over .env/settings
+        try:
+            from src.context.platform_stats import get_platform_stats as _gps
+            max_age = int(_gps().get("news_max_age_days", settings.news_max_age_days))
+        except Exception:
+            max_age = settings.news_max_age_days
+
+        skipped_stale = 0
         for entry in feed.entries[:20]:
+            pub_date_str = entry.get("published", str(date.today()))
+            if not is_recent_enough(pub_date_str, max_age):
+                skipped_stale += 1
+                continue
             items.append(NewsItem(
                 title=entry.get("title", "").strip(),
                 url=entry.get("link", ""),
                 summary=entry.get("summary", "")[:500].strip(),
-                published_date=entry.get("published", str(date.today())),
+                published_date=pub_date_str,
                 source=source,
             ))
-        log.info("rss_fetched", source=source, count=len(feed.entries))
+        if skipped_stale:
+            log.info(
+                "rss_stale_entries_skipped",
+                source=source,
+                skipped=skipped_stale,
+                max_age_days=settings.news_max_age_days,
+            )
+        log.info("rss_fetched", source=source, total=len(feed.entries), kept=len(items))
         return items
     except Exception as exc:
         log.error("rss_fetch_failed", source=source, error=str(exc))

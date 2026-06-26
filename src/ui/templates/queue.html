@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Content Queue — KensaraAI{% endblock %}
+{% block title %}Content Queue · KensaraAI{% endblock %}
 {% block content %}
 
 <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;">
@@ -25,26 +25,26 @@
     <div style="padding:18px 20px;display:flex;align-items:flex-start;gap:14px;">
 
       <!-- Type icon -->
-      <div style="width:38px;height:38px;border-radius:9px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;margin-top:1px;">{{ item.icon }}</div>
+      <div style="width:38px;height:38px;border-radius:9px;background:rgba(0,0,0,0.04);border:1px solid rgba(0,0,0,0.07);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;margin-top:1px;">{{ item.icon }}</div>
 
       <!-- Content meta -->
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;">
-          <span style="font-size:14px;font-weight:600;color:#e2e8f0;">{{ item.title }}</span>
+          <span style="font-size:14px;font-weight:600;color:#0f172a;">{{ item.title }}</span>
           <span class="badge badge-{{ item.status }}">{{ item.status | replace('_',' ') | title }}</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           {% if item.primary_keyword %}
-          <span style="font-size:11px;font-weight:500;color:#818cf8;display:flex;align-items:center;gap:4px;">
+          <span style="font-size:11px;font-weight:500;color:#4f46e5;display:flex;align-items:center;gap:4px;">
             <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
             {{ item.primary_keyword }}
           </span>
           {% endif %}
-          {% if item.word_count %}<span style="font-size:11px;color:rgba(255,255,255,0.25);">{{ item.word_count }} words</span>{% endif %}
-          <span style="font-size:11px;color:rgba(255,255,255,0.2);">{{ item.date }}</span>
+          {% if item.word_count %}<span style="font-size:11px;color:#64748b;">{{ item.word_count }} words</span>{% endif %}
+          <span style="font-size:11px;color:#64748b;">{{ item.date }}</span>
         </div>
         {% if item.meta_description %}
-        <div style="font-size:12px;color:rgba(255,255,255,0.35);margin-top:7px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ item.meta_description }}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:7px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ item.meta_description }}</div>
         {% endif %}
       </div>
 
@@ -78,9 +78,9 @@
     </div><!-- /header -->
 
     <!-- Inline editor (hidden) -->
-    <div id="edit-{{ row_id }}" style="display:none;border-top:1px solid rgba(255,255,255,0.06);">
+    <div id="edit-{{ row_id }}" style="display:none;border-top:1px solid rgba(0,0,0,0.07);">
       <div style="padding:16px 20px;background:rgba(0,0,0,0.2);">
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:10px;">Edit Markdown</div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;margin-bottom:10px;">Edit Markdown</div>
         <textarea rows="14">{{ item.body }}</textarea>
         <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
           <button class="btn btn-primary btn-sm" onclick="saveEdit('{{ item.folder }}', '{{ item.filename }}', '{{ row_id }}')">Save changes</button>
@@ -97,9 +97,9 @@
   <div class="empty-state">
     <div class="empty-icon">
       {% if filter == 'pending' %}
-      <svg width="22" height="22" fill="none" stroke="rgba(255,255,255,0.3)" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <svg width="22" height="22" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
       {% else %}
-      <svg width="22" height="22" fill="none" stroke="rgba(255,255,255,0.3)" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
+      <svg width="22" height="22" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/></svg>
       {% endif %}
     </div>
     <div class="empty-title">

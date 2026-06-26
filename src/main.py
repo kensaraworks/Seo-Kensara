@@ -3,12 +3,15 @@ import asyncio
 from datetime import date
 import hashlib
 import json
+from pathlib import Path
+import re
 import sqlite3
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from src.config import settings
 from src.agents.blog_writer import generate_blog_post
 from src.agents.keyword_cluster_engine import run_cluster_gap_auto_queue
 from src.agents.trending_monitor import (
@@ -30,7 +33,7 @@ from src.geo.entity_monitor import (
 )
 from src.geo.llms_txt_generator import write_llms_txt
 from src.agents.intent_classifier import IntentType
-from src.agents.news_scout import score_news_items, ScoredNewsItem
+from src.agents.news_scout import score_news_items, score_all_relevant_news_items, ScoredNewsItem
 from src.publishers.file_publisher import save_blog_draft
 from src.scrapers.rss_scraper import fetch_rss_feeds
 from src.queue.job_queue import job_queue
@@ -41,16 +44,77 @@ from src.analytics.feedback_loop import (
     run_seasonal_preload_check,
     seed_calendar_on_startup,
 )
+from src.engines.content_calendar import (
+    CalendarAction,
+    build_calendar_window,
+    capacity_alert_payload,
+    detect_content_gap,
+    get_calendar_slot,
+    should_generate_newsjack,
+)
 
 log = structlog.get_logger()
 
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
-async def run_news_scan() -> None:
-    """Daily job: fetch + score news. Cache results."""
+
+def _frontmatter_field(text: str, field: str) -> str:
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        return ""
+    pattern = re.compile(rf"^{re.escape(field)}:\s*(.+)$", re.MULTILINE)
+    field_match = pattern.search(match.group(1))
+    return field_match.group(1).strip().strip('"').strip("'") if field_match else ""
+
+
+def _count_pending_review_items() -> int:
+    """Count drafts waiting on CEO review, which is the Module 2.10 queue cap."""
+    drafts_root = Path(settings.content_output_dir)
+    pending_statuses = {"draft", "pending", "pending_review"}
+    total = 0
+    for folder in ("blogs", "linkedin", "newsletters"):
+        folder_path = drafts_root / folder
+        if not folder_path.exists():
+            continue
+        for md_file in folder_path.glob("*.md"):
+            try:
+                status = _frontmatter_field(md_file.read_text(encoding="utf-8"), "status") or "draft"
+            except OSError:
+                continue
+            if status in pending_statuses:
+                total += 1
+    return total
+
+
+def _record_capacity_alert_if_needed() -> int:
+    pending_count = _count_pending_review_items()
+    payload = capacity_alert_payload(pending_count)
+    if payload:
+        job_queue.record_content_calendar_alert(
+            alert_type=payload["type"],
+            message=payload["message"],
+            payload=payload,
+        )
+    return pending_count
+
+
+def _top_gap_keywords(limit: int = 3) -> list[dict]:
+    suggestions: list[dict] = []
+    stats = job_queue.get_cluster_stats()
+    for cluster_id in stats.keys():
+        for keyword in job_queue.get_underserved_keywords(cluster_id, limit=limit):
+            suggestions.append(keyword)
+            if len(suggestions) >= limit:
+                return suggestions
+    return suggestions
+
+
+async def run_news_scan() -> dict:
+    """Daily job: fetch + score news and persist relevant scanned rows."""
     log.info("job_news_scan_start")
     try:
         items = await fetch_rss_feeds()
-        scored = await score_news_items(items)
+        scored = await score_all_relevant_news_items(items)
         
         # Record scored items as scanned in database to prevent re-processing
         for s in scored:
@@ -67,9 +131,47 @@ async def run_news_scan() -> None:
                     action_taken="scanned"
                 )
                 
-        log.info("job_news_scan_done", top_stories=len(scored))
+        log.info("job_news_scan_done", relevant_stories=len(scored))
+        return {
+            "count": len(scored),
+            "message": f"Scanned {len(items)} items, relevant {len(scored)}",
+            "latest_news": [
+                {
+                    "title": s.item.title,
+                    "url": s.item.url,
+                    "source": s.item.source,
+                    "score": s.relevance_score,
+                }
+                for s in scored[:20]
+            ],
+        }
     except Exception as exc:
         log.error("job_news_scan_failed", error=str(exc))
+        return {
+            "count": 0,
+            "message": f"News scan failed: {exc}",
+            "latest_news": [],
+        }
+
+
+async def run_content_gap_check() -> None:
+    """Daily Module 2.10.D check: alert-only, never auto-generate."""
+    pending_count = _count_pending_review_items()
+    slots = build_calendar_window(date.today(), days=7)
+    alert = detect_content_gap(
+        scheduled_slots=slots,
+        pending_count=pending_count,
+        top_gap_keywords=_top_gap_keywords(limit=3),
+        start_date=date.today(),
+    )
+    if alert:
+        payload = alert.to_dict()
+        job_queue.record_content_calendar_alert(
+            alert_type=payload["type"],
+            message=payload["message"],
+            payload=payload,
+        )
+        log.warning("content_gap_detected", pending_count=pending_count, message=alert.message)
 
 
 async def run_blog_generate(story: ScoredNewsItem | None = None) -> None:
@@ -78,35 +180,79 @@ async def run_blog_generate(story: ScoredNewsItem | None = None) -> None:
     """
     log.info("job_blog_generate_start", immediate=story is not None)
     try:
+        pending_count = _record_capacity_alert_if_needed()
+        if pending_count >= 10:
+            log.warning("blog_generation_paused_queue_full", pending_count=pending_count)
+            return
+
         if story is None:
             items = await fetch_rss_feeds()
             scored = await score_news_items(items)
+            top_score = scored[0].relevance_score if scored else 0
+            slot = get_calendar_slot(date.today(), intelligence_score=top_score)
+            if slot.action == CalendarAction.SKIP:
+                log.info("job_blog_calendar_skip", reason=slot.reason)
+                return
+            if slot.action in {CalendarAction.NEWSLETTER_DIGEST, CalendarAction.PILLAR_REFRESH}:
+                log.info("job_blog_calendar_slot_not_blog", slot=slot.action.value, reason=slot.reason)
+                return
             if not scored:
-                log.warning("job_blog_no_news_found")
+                log.warning("job_blog_no_news_found_for_scheduled_slot", slot=slot.action.value)
                 return
             top_story = scored[0]
         else:
             top_story = story
+            allowed, reason = should_generate_newsjack(
+                story_score=top_story.relevance_score,
+                pending_count=pending_count,
+            )
+            if not allowed:
+                log.info("newsjack_generation_skipped", reason=reason, score=top_story.relevance_score)
+                return
+            slot = get_calendar_slot(date.today(), intelligence_score=top_story.relevance_score)
 
-        queued_item = job_queue.pop_content_queue()
+        queued_item = None if slot.action == CalendarAction.TIER3_NEWSJACK else job_queue.pop_content_queue()
         if queued_item:
             keyword = queued_item["keyword"]
             intent_type = queued_item.get("intent_type") or IntentType.INFORMATIONAL.value
-            try:
-                paa_questions = json.loads(queued_item.get("paa_questions", "[]"))
-            except Exception:
-                paa_questions = []
+            raw_paa = queued_item.get("paa_questions", [])
+            if isinstance(raw_paa, list):
+                paa_questions = raw_paa
+            else:
+                try:
+                    paa_questions = json.loads(raw_paa or "[]")
+                except Exception:
+                    paa_questions = []
+            tier = int(queued_item.get("tier") or slot.tier or 2)
+            cluster_id = queued_item.get("cluster_id") or "general"
         else:
-            keyword = "DPDPA compliance India"
+            keyword = "DPDPA news update India" if slot.action == CalendarAction.TIER3_NEWSJACK else "DPDPA compliance India"
             intent_type = IntentType.INFORMATIONAL.value
             paa_questions = []
+            tier = slot.tier or 2
+            cluster_id = "general"
 
-        log.info("job_blog_keyword", keyword=keyword, intent=intent_type)
+        log.info(
+            "job_blog_keyword",
+            keyword=keyword,
+            intent=intent_type,
+            tier=tier,
+            slot=slot.action.value,
+        )
 
-        post = await generate_blog_post(top_story, keyword, intent_type, paa_questions)
+        post = await generate_blog_post(
+            top_story,
+            keyword,
+            intent_type,
+            paa_questions,
+            tier=tier,
+            cluster_id=cluster_id,
+            industry=slot.industry,
+        )
         path = await save_blog_draft(post)
         
-        job_queue.mark_content_completed(keyword)
+        if queued_item:
+            job_queue.mark_content_completed(keyword)
 
         # Record story as processed / blog generated in the database
         story_id = hashlib.md5(top_story.item.url.encode("utf-8")).hexdigest()
@@ -136,6 +282,18 @@ async def run_regulatory_poll() -> None:
         critical_stories = [s for s in scored if s.relevance_score >= 12]
         if critical_stories:
             for s in critical_stories:
+                pending_count = _record_capacity_alert_if_needed()
+                allowed, reason = should_generate_newsjack(s.relevance_score, pending_count)
+                if not allowed:
+                    log.warning(
+                        "critical_newsjack_paused",
+                        title=s.item.title,
+                        score=s.relevance_score,
+                        pending_count=pending_count,
+                        reason=reason,
+                    )
+                    continue
+
                 story_id = hashlib.md5(s.item.url.encode("utf-8")).hexdigest()
                 
                 # Double check to prevent duplicate newsjacks
@@ -191,6 +349,22 @@ async def run_trending_monitor_weekly() -> None:
         monitor_linkedin()
     )
     log.info("job_trending_monitor_weekly_done")
+
+
+async def run_trending_monitors() -> None:
+    """Run all trending monitors in one scheduled wrapper job."""
+    log.info("job_trending_monitors_start")
+    await monitor_google_trends()
+    results = await asyncio.gather(
+        monitor_google_autocomplete(),
+        monitor_reddit_quora(),
+        monitor_linkedin(),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, Exception):
+            log.error("job_trending_monitors_partial_failure", error=str(result))
+    log.info("job_trending_monitors_done")
 
 
 async def run_geo_monitor_weekly() -> None:
@@ -367,6 +541,13 @@ def main() -> None:
         CronTrigger(hour=7, minute=15),
         id="seasonal_preload_daily",
         name="Daily seasonal enforcement window preload check (1.8.C)",
+    )
+
+    scheduler.add_job(
+        run_content_gap_check,
+        CronTrigger(hour=7, minute=45),
+        id="content_gap_check",
+        name="Daily content calendar gap check (2.10.D)",
     )
 
     scheduler.start()

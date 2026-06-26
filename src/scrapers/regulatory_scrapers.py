@@ -190,11 +190,139 @@ async def fetch_india_kanoon_judgments() -> list[NewsItem]:
     query = "site:indiankanoon.org DPDPA OR 'personal data protection' OR 'privacy law' judgment 2025 2026"
     return await _tavily_fallback_search(query, "Indian Court Judgments")
 
+async def fetch_ico_enforcement() -> list[NewsItem]:
+    """Scrape ICO enforcement actions and news from ico.org.uk.
+
+    ICO officially discontinued RSS feeds after their 2024 website redesign.
+    We now scrape the enforcement actions listing and news search pages directly.
+    Falls back to a Tavily site-search if scraping fails.
+    """
+    log.info("fetch_ico_enforcement_start")
+    BASE = "https://ico.org.uk"
+
+    # Primary: scrape the enforcement actions listing page
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=15.0, follow_redirects=True) as client:
+            r = await client.get(f"{BASE}/action-weve-taken/enforcement/")
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "lxml")
+
+            items: list[NewsItem] = []
+            # ICO renders enforcement results as anchor elements with descriptive text blocks
+            for card in soup.select("article, .search-result, li.result, .enforcement-item"):
+                link_elem = card.find("a", href=True)
+                heading = card.find(["h2", "h3", "h4"])
+                if not link_elem:
+                    continue
+                title = (heading.get_text(strip=True) if heading else link_elem.get_text(strip=True))
+                href = link_elem["href"]
+                if not href.startswith("http"):
+                    href = BASE + href
+                summary_elem = card.find("p")
+                summary = summary_elem.get_text(strip=True)[:400] if summary_elem else title
+                items.append(NewsItem(
+                    title=title,
+                    url=href,
+                    summary=summary,
+                    published_date=str(date.today()),
+                    source="ICO",
+                ))
+            if items:
+                log.info("fetch_ico_enforcement_success", count=len(items))
+                return items
+
+            # Fallback: extract any /action-weve-taken internal links with labels
+            for a in soup.select("a[href]")[:50]:
+                href = a["href"]
+                if "/action-weve-taken/" in href and href != "/action-weve-taken/":
+                    if not href.startswith("http"):
+                        href = BASE + href
+                    title = a.get_text(strip=True)
+                    if title and len(title) > 10:
+                        items.append(NewsItem(
+                            title=title,
+                            url=href,
+                            summary=title,
+                            published_date=str(date.today()),
+                            source="ICO",
+                        ))
+            if items:
+                log.info("fetch_ico_enforcement_links_success", count=len(items))
+                return items[:20]
+
+    except Exception as exc:
+        log.warning("fetch_ico_enforcement_scrape_failed", error=str(exc))
+
+    # Tavily fallback — searches ICO for recent enforcement news
+    query = "site:ico.org.uk enforcement penalty fine action data protection 2025 2026"
+    return await _tavily_fallback_search(query, "ICO")
+
+
 async def fetch_iapp_resources() -> list[NewsItem]:
-    """Search IAPP resources page for privacy topics."""
-    log.info("fetch_iapp_resources_start")
-    query = "site:iapp.org/resources data privacy compliance DPDPA GDPR"
-    return await _tavily_fallback_search(query, "IAPP Resources")
+    """Scrape IAPP news articles and daily dashboard items from iapp.org.
+
+    IAPP does not maintain a public RSS feed. We scrape the news listing
+    page directly with a browser-like User-Agent, then fall back to Tavily.
+    """
+    log.info("fetch_iapp_news_start")
+    BASE = "https://iapp.org"
+
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, timeout=15.0, follow_redirects=True) as client:
+            r = await client.get(f"{BASE}/news/")
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "lxml")
+
+            items: list[NewsItem] = []
+            # IAPP news cards are rendered in article/li elements with heading+link
+            for card in soup.select("article, .news-item, li.item, .resource-item, .post"):
+                link_elem = card.find("a", href=True)
+                heading = card.find(["h2", "h3", "h4"])
+                if not link_elem:
+                    continue
+                title = (heading.get_text(strip=True) if heading else link_elem.get_text(strip=True))
+                href = link_elem["href"]
+                if not href.startswith("http"):
+                    href = BASE + href
+                summary_elem = card.find("p")
+                summary = summary_elem.get_text(strip=True)[:400] if summary_elem else title
+                if title and len(title) > 10:
+                    items.append(NewsItem(
+                        title=title,
+                        url=href,
+                        summary=summary,
+                        published_date=str(date.today()),
+                        source="IAPP",
+                    ))
+            if items:
+                log.info("fetch_iapp_news_success", count=len(items))
+                return items[:20]
+
+            # Generic fallback: collect any iapp.org/news/ or iapp.org/resources/ links
+            for a in soup.select("a[href]")[:60]:
+                href = a["href"]
+                if not href.startswith("http"):
+                    href = BASE + href
+                if "iapp.org/news/" in href or "iapp.org/resources/" in href:
+                    title = a.get_text(strip=True)
+                    if title and len(title) > 10:
+                        items.append(NewsItem(
+                            title=title,
+                            url=href,
+                            summary=title,
+                            published_date=str(date.today()),
+                            source="IAPP",
+                        ))
+            if items:
+                log.info("fetch_iapp_links_success", count=len(items))
+                return items[:20]
+
+    except Exception as exc:
+        log.warning("fetch_iapp_news_scrape_failed", error=str(exc))
+
+    # Tavily fallback
+    query = "site:iapp.org data privacy GDPR DPDPA compliance news 2025 2026"
+    return await _tavily_fallback_search(query, "IAPP")
 
 async def fetch_privacy_enforcement_press() -> list[NewsItem]:
     """Search Privacy Enforcement press releases."""

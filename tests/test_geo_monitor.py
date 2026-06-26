@@ -34,16 +34,17 @@ def test_analyze_mention():
 
 @patch("src.geo.geo_monitor.job_queue")
 @patch("src.geo.geo_monitor._check_citation_accuracy", new_callable=AsyncMock)
-@patch("src.geo.geo_monitor._query_openai", return_value="Kensara is good.")
+@patch("src.geo.geo_monitor._query_alltoken_engine", return_value="Kensara is good.")
 @patch("src.geo.geo_monitor._query_perplexity", return_value="OneTrust is good.")
-async def test_monitor_ai_citations(mock_px, mock_oa, mock_check, mock_queue):
+@patch("src.geo.geo_monitor._query_gemini", return_value="Kensara is great.")
+async def test_monitor_ai_citations(mock_gemini, mock_px, mock_oa, mock_check, mock_queue):
     await monitor_ai_citations()
     
-    # Called for each target query twice (once for OpenAI, once for Perplexity)
+    # Called for each target query 4 times (once for ChatGPT, Claude, Gemini, and Perplexity)
     from src.geo.geo_monitor import TARGET_QUERIES
-    assert mock_queue.record_ai_citation.call_count == len(TARGET_QUERIES) * 2
+    assert mock_queue.record_ai_citation.call_count == len(TARGET_QUERIES) * 4
     
-    # First call should be OpenAI, mentioning Kensara
+    # First call should be ChatGPT (AllToken engine), mentioning Kensara
     first_call_args = mock_queue.record_ai_citation.call_args_list[0]
     assert first_call_args[0][1] == "ChatGPT"
     assert first_call_args[0][2] is True # mentioned

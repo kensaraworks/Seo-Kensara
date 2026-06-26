@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kensara AI — SEO Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* ── Reset ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Base — matches kensara.in dark theme vars ───────────────────────── */
+    :root {
+      --background:   #0f172b;   /* kensara slate-900 */
+      --card:         #1d293d;   /* slate-800 */
+      --border:       rgba(255,255,255,0.10);
+      --primary:      #6468f0;   /* kensara --primary in dark mode */
+      --primary-hover:#818cf9;
+      --foreground:   #fafafa;
+      --muted:        #90a1b9;   /* slate-400 */
+      --muted-dim:    #62748e;   /* slate-500 */
+      --input-bg:     rgba(255,255,255,0.05);
+      --font-sans:    'Inter', 'Inter Fallback', system-ui, sans-serif;
+      --font-geist:   'Geist', 'Geist Fallback', system-ui, sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
+    }
+
+    /* ── Page background — exact kensara.in hero dark section ───────────── */
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      position: relative;
+    }
+
+    /* Base radial overlays matching kensara.in exactly */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      /* White shimmer at top — kensara: radial-gradient(circle at top,#ffffff14,transparent 55%) */
+      background:
+        radial-gradient(circle at top, #ffffff14 0%, transparent 55%),
+        radial-gradient(at top left, #3b82f614 0%, transparent 55%),
+        radial-gradient(ellipse at 70% 0%, rgba(100,104,240,0.18) 0%, transparent 50%),
+        radial-gradient(ellipse at 0% 80%, rgba(141,84,255,0.10) 0%, transparent 45%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Diagonal top-right dark polygon — from the screenshot */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0; right: 0;
+      width: 42%;
+      height: 100%;
+      background: linear-gradient(
+        135deg,
+        rgba(9,9,11,0.0) 0%,
+        rgba(9,9,11,0.18) 40%,
+        rgba(9,9,11,0.38) 70%,
+        rgba(9,9,11,0.52) 100%
+      );
+      clip-path: polygon(28% 0%, 100% 0%, 100% 100%, 0% 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Subtle dot-grid noise overlay — kensara.in uses noise texture */
+    .noise {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      opacity: 0.028;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px 256px;
+    }
+
+    /* ── Page centering ──────────────────────────────────────────────────── */
+    .page {
+      position: relative;
+      z-index: 2;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    /* ── Auth card — kensara: bg-slate-900/88 border border-white/10 backdrop-blur-sm ── */
+    .auth-card {
+      width: 100%;
+      max-width: 400px;
+      background: rgba(29, 41, 61, 0.82);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      border-radius: 16px;
+      padding: 36px 32px 32px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.04),
+        0 24px 64px rgba(0,0,0,0.50),
+        0 4px 16px rgba(9,9,11,0.40);
+    }
+
+    /* ── Logo row ────────────────────────────────────────────────────────── */
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 11px;
+      margin-bottom: 28px;
+    }
+    .brand-logo {
+      height: 34px;
+      width: auto;
+      display: block;
+      flex-shrink: 0;
+    }
+    .brand-name {
+      font-family: var(--font-geist);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--foreground);
+      letter-spacing: -0.02em;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.07);
+      margin: 0 0 24px;
+    }
+
+    /* ── Heading — kensara style: large, tight tracking, Inter ──────────── */
+    .auth-heading {
+      font-family: var(--font-geist);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--foreground);
+      letter-spacing: -0.025em;
+      text-align: center;
+      line-height: 1.2;
+      margin-bottom: 7px;
+    }
+    .auth-sub {
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.55;
+      margin-bottom: 28px;
+    }
+
+    /* ── Form field ──────────────────────────────────────────────────────── */
+    .field-label {
+      display: block;
+      font-family: var(--font-sans);
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 7px;
+      letter-spacing: 0.01em;
+    }
+    .field-wrap {
+      position: relative;
+      margin-bottom: 16px;
+    }
+    .field-icon {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted-dim);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+    }
+    /* kensara input style: bg white/5, border white/12, rounded-md */
+    .auth-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      color: var(--foreground);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 400;
+      padding: 11px 38px 11px 40px;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      letter-spacing: 0.02em;
+    }
+    .auth-input::placeholder {
+      color: rgba(144, 161, 185, 0.40);
+      letter-spacing: 0;
+    }
+    .auth-input:focus {
+      border-color: rgba(100, 104, 240, 0.55);
+      box-shadow: 0 0 0 3px rgba(100, 104, 240, 0.12);
+      background: rgba(255, 255, 255, 0.07);
+    }
+    .auth-input:hover:not(:focus) {
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    /* Eye toggle */
+    .eye-btn {
+      position: absolute;
+      right: 11px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--muted-dim);
+      cursor: pointer;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      border-radius: 4px;
+      transition: color 0.15s;
+    }
+    .eye-btn:hover { color: var(--muted); }
+
+    /* ── Submit button — kensara primary style ───────────────────────────── */
+    .auth-btn {
+      width: 100%;
+      padding: 11px 20px;
+      background: var(--primary);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      color: #edf1ff;
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+      box-shadow: 0 2px 12px rgba(100,104,240,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin-top: 4px;
+    }
+    .auth-btn:hover:not(:disabled) {
+      background: var(--primary-hover);
+      box-shadow: 0 4px 20px rgba(129,140,249,0.40);
+      transform: translateY(-1px);
+    }
+    .auth-btn:active:not(:disabled) { transform: translateY(0); }
+    .auth-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    /* ── Error message ───────────────────────────────────────────────────── */
+    .error-msg {
+      display: none;
+      align-items: center;
+      gap: 7px;
+      margin-top: 12px;
+      padding: 9px 13px;
+      background: rgba(251, 44, 54, 0.10);
+      border: 1px solid rgba(251, 44, 54, 0.22);
+      border-radius: 7px;
+      font-family: var(--font-sans);
+      font-size: 12.5px;
+      color: #fca5a5;
+    }
+    .error-msg.visible { display: flex; }
+
+    /* ── Footer ──────────────────────────────────────────────────────────── */
+    .auth-footer {
+      margin-top: 24px;
+      text-align: center;
+      font-family: var(--font-sans);
+      font-size: 11px;
+      color: var(--muted-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    /* ── Animations ──────────────────────────────────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes check-pop {
+      0%  { transform: scale(.5); opacity: 0; }
+      60% { transform: scale(1.15); }
+      100%{ transform: scale(1); opacity: 1; }
+    }
+    .check-anim { animation: check-pop .3s cubic-bezier(.34,1.56,.64,1) forwards; }
+
+    /* Card fade-in */
+    @keyframes card-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .auth-card { animation: card-in .4s cubic-bezier(.22,1,.36,1) both; }
+  </style>
+</head>
+<body>
+
+<!-- Noise overlay -->
+<div class="noise" aria-hidden="true"></div>
+
+<div class="page">
+  <div class="auth-card">
+
+    <!-- Brand -->
+    <div class="brand">
+      <img src="/static/images/kensara-logo.png" alt="Kensara AI" class="brand-logo" />
+      <span class="brand-name">Kensara AI</span>
+    </div>
+    <div class="divider"></div>
+
+    <!-- Heading -->
+    <h1 class="auth-heading">Welcome to SEO Intelligence!</h1>
+    <p class="auth-sub">Enter your access key to continue</p>
+
+    <!-- Form -->
+    <form id="auth-form" onsubmit="handleAuth(event)" autocomplete="off">
+
+      <label class="field-label" for="auth-key">Access Key</label>
+      <div class="field-wrap">
+        <span class="field-icon" aria-hidden="true">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+          </svg>
+        </span>
+        <input
+          id="auth-key"
+          type="password"
+          class="auth-input"
+          placeholder="Enter your access key"
+          autocomplete="current-password"
+          spellcheck="false"
+          required
+        />
+        <button type="button" class="eye-btn" onclick="toggleVis()" title="Show/hide key" tabindex="-1">
+          <svg id="eye-svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+        </button>
+      </div>
+
+      <button type="submit" id="submit-btn" class="auth-btn">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+        </svg>
+        Access Dashboard
+      </button>
+
+      <div class="error-msg" id="error-msg" role="alert">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        Invalid access key. Please try again.
+      </div>
+
+    </form>
+
+    <!-- Footer -->
+    <div class="auth-footer">
+      <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+      </svg>
+      Secured · Kensara AI
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // Toggle password visibility
+  function toggleVis() {
+    const inp = document.getElementById('auth-key');
+    const svg = document.getElementById('eye-svg');
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    svg.innerHTML = show
+      ? `<path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>`
+      : `<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
+  }
+
+  async function handleAuth(e) {
+    e.preventDefault();
+    const key = document.getElementById('auth-key').value;
+    const btn = document.getElementById('submit-btn');
+    const err = document.getElementById('error-msg');
+    const spinner = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin .8s linear infinite"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-opacity=".3"/><path d="M21 12a9 9 0 00-9-9" stroke-linecap="round"/></svg> Verifying…`;
+
+    btn.disabled = true;
+    btn.innerHTML = spinner;
+    err.classList.remove('visible');
+
+    try {
+      const fd = new FormData();
+      fd.append('auth_key', key);
+      const res = await fetch('/auth/login', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (data.ok) {
+        btn.style.background = '#059669';
+        btn.style.boxShadow = '0 4px 16px rgba(5,150,105,0.35)';
+        btn.innerHTML = `<svg class="check-anim" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Access Granted`;
+        setTimeout(() => { window.location.href = data.redirect || '/'; }, 500);
+      } else {
+        err.classList.add('visible');
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg> Access Dashboard`;
+        btn.style.background = '';
+        btn.style.boxShadow = '';
+        document.getElementById('auth-key').focus();
+        document.getElementById('auth-key').select();
+      }
+    } catch {
+      err.classList.add('visible');
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg> Access Dashboard`;
+    }
+  }
+
+  // Auto-focus on load
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('auth-key').focus();
+  });
+</script>
+</body>
+</html>

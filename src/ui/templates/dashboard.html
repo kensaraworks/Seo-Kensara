@@ -4,8 +4,8 @@
 
 <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;">
   <div>
-    <div class="page-title">Good morning, Prince Raj</div>
-    <div class="page-sub">{{ now }} · IST</div>
+    <div class="page-title">Namaste, Mr COO</div>
+    <div class="page-sub">{{ now }}</div>
   </div>
   {% if total_pending > 0 %}
   <a href="/queue/" class="btn btn-primary" style="margin-top:4px;">
@@ -18,194 +18,212 @@
   {% endif %}
 </div>
 
-<div class="page-content" style="display:flex;flex-direction:column;gap:20px;">
+<div class="page-content" style="display:flex;flex-direction:column;gap:24px;">
 
-  <!-- Alert: pending items -->
+  {# ── Pending alert ─────────────────────────────────────────────────────── #}
   {% if total_pending > 0 %}
   <div class="alert-warning" style="display:flex;align-items:center;gap:14px;">
     <span class="pulse-dot amber" style="flex-shrink:0;"></span>
     <div style="flex:1;">
-      <div style="font-size:13px;font-weight:600;color:#fbbf24;">{{ total_pending }} piece{{ 's' if total_pending != 1
-        }} waiting for your approval</div>
-      <div style="font-size:12px;color:rgba(251,191,36,0.6);margin-top:2px;">
-        {% if pending_blogs > 0 %}{{ pending_blogs }} blog{{ 's' if pending_blogs != 1 }}{% endif %}{% if
-        pending_linkedin > 0 %}{% if pending_blogs > 0 %} · {% endif %}{{ pending_linkedin }} LinkedIn{% endif %}{% if
-        pending_newsletters > 0 %}{% if pending_blogs > 0 or pending_linkedin > 0 %} · {% endif %}{{ pending_newsletters
-        }} newsletter{% endif %}
+      <div style="font-size:13px;font-weight:600;color:#fbbf24;">
+        {{ total_pending }} piece{{ 's' if total_pending != 1 }} waiting for your approval
+      </div>
+      <div style="font-size:12px;color:#b45309;margin-top:2px;">
+        {% if pending_blogs > 0 %}{{ pending_blogs }} blog{{ 's' if pending_blogs != 1 }}{% endif %}
+        {% if pending_linkedin > 0 %}{% if pending_blogs > 0 %} · {% endif %}{{ pending_linkedin }} LinkedIn{% endif %}
+        {% if pending_newsletters > 0 %}{% if pending_blogs > 0 or pending_linkedin > 0 %} · {% endif %}{{ pending_newsletters }} newsletter{% endif %}
         — click Approve to publish, Reject to discard
       </div>
     </div>
-    <a href="/queue/"
-      style="font-size:12px;font-weight:600;color:#f59e0b;text-decoration:none;white-space:nowrap;flex-shrink:0;">Review
-      now →</a>
+    <a href="/queue/" style="font-size:12px;font-weight:600;color:#f59e0b;text-decoration:none;white-space:nowrap;flex-shrink:0;">Review now →</a>
   </div>
   {% endif %}
 
-  <!-- Stats -->
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
-    <div class="stat-card">
-      <div class="stat-value" style="color:#fbbf24;">{{ total_pending }}</div>
-      <div class="stat-label">Awaiting approval</div>
-      <div class="stat-sub">{{ pending_blogs }}B · {{ pending_linkedin }}L · {{ pending_newsletters }}N</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value" style="color:#4ade80;">{{ total_approved }}</div>
-      <div class="stat-label">Approved</div>
-      <div class="stat-sub">ready to publish</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value" style="color:#a5b4fc;">{{ total_published }}</div>
-      <div class="stat-label">Published</div>
-      <div class="stat-sub">live on kensara.in</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-value" style="color:rgba(255,255,255,0.3);">{{ total_rejected }}</div>
-      <div class="stat-label">Rejected</div>
-      <div class="stat-sub">discarded</div>
+  {# ══════════════════════════════════════════════════════════════════════
+     CONTENT PIPELINE STATS
+  ══════════════════════════════════════════════════════════════════════ #}
+  <div>
+    <div class="section-title">Content Pipeline</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+      <div class="stat-card">
+        <div class="stat-value" style="color:#fbbf24;">{{ total_pending }}</div>
+        <div class="stat-label">Awaiting Approval</div>
+        <div class="stat-sub">{{ pending_blogs }}B · {{ pending_linkedin }}L · {{ pending_newsletters }}N</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:#4ade80;">{{ total_approved }}</div>
+        <div class="stat-label">Approved</div>
+        <div class="stat-sub">ready to publish</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:#818cf8;">{{ total_published }}</div>
+        <div class="stat-label">Published</div>
+        <div class="stat-sub">live on kensara.in</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color:#6b7280;">{{ total_rejected }}</div>
+        <div class="stat-label">Rejected</div>
+        <div class="stat-sub">discarded</div>
+      </div>
     </div>
   </div>
 
-  <!-- Content this week + quick actions -->
-  <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start;">
-
-    <!-- This week -->
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-        <div class="section-title" style="margin:0;">This week's drafts</div>
-        <span style="font-size:11px;color:rgba(255,255,255,0.25);">{{ this_week_count }} generated</span>
+  {# ══════════════════════════════════════════════════════════════════════
+     GSC 7-DAY METRICS
+  ══════════════════════════════════════════════════════════════════════ #}
+  {% if gsc_stat_cards %}
+  <div>
+    <div class="section-title">Search Console · Last 7 Days</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+      {% for card in gsc_stat_cards %}
+      <div class="stat-card">
+        <div class="stat-value" style="color:{{ card.color }};">{{ card.value }}</div>
+        <div class="stat-label">{{ card.label }}</div>
+        <div class="stat-sub">{{ card.sub }}</div>
       </div>
-      {% if this_week_items %}
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        {% for item in this_week_items %}
-        <div
-          style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);">
-          <div
-            style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">
-            {{ item.icon }}</div>
-          <div style="flex:1;min-width:0;">
-            <div
-              style="font-size:13px;font-weight:500;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-              {{ item.title }}</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
-              <span class="badge badge-{{ item.status }}">{{ item.status | title }}</span>
-              {% if item.word_count %}<span style="font-size:11px;color:rgba(255,255,255,0.25);">{{ item.word_count
-                }}w</span>{% endif %}
-              <span style="font-size:11px;color:rgba(255,255,255,0.2);">{{ item.date }}</span>
-            </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ══════════════════════════════════════════════════════════════════════
+     PIPELINE HEALTH + API COSTS (side-by-side)
+  ══════════════════════════════════════════════════════════════════════ #}
+      {# -- Pipeline health -------------------------------------------------- #}
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div class="section-title" style="margin:0;">Pipeline Health</div>
+        <span style="font-size:11px;color:#64748b;">{{ queue_depth.total }} queued</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px;">
+        {% for row in pipeline_health %}
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:12px;color:#374151;">{{ row.name }}</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:10px;color:#64748b;">{{ row.last_run }}</span>
+            <span class="pulse-dot {{ 'green' if row.ok else 'amber' }}"></span>
           </div>
-          {% if item.status == 'pending' %}
-          <a href="/queue/"
-            style="font-size:11px;font-weight:600;color:#a5b4fc;text-decoration:none;white-space:nowrap;flex-shrink:0;">Review
-            →</a>
-          {% endif %}
         </div>
         {% endfor %}
       </div>
-      {% else %}
-      <div class="empty-state" style="padding:40px 20px;">
-        <div class="empty-icon">
-          <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.3)" viewBox="0 0 24 24" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round"
-              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5" />
-            <path stroke-linecap="round" stroke-linejoin="round"
-              d="M17.657 3.757a2 2 0 012.829 2.829L10.5 16.57l-4 1 1-4 9.157-9.813z" />
-          </svg>
-        </div>
-        <div class="empty-title">No content this week yet</div>
-        <div class="empty-sub">Trigger a blog run from the schedule page, or wait for the daily 08:15 IST job.</div>
-        <a href="/schedule/" class="btn btn-ghost btn-sm" style="margin-top:16px;">View Schedule</a>
-      </div>
-      {% endif %}
+      <div class="divider"></div>
+      <button class="btn btn-primary btn-sm"
+        style="width:100%;justify-content:center;background:#6366f1;color:#fff;border-color:#818cf8;box-shadow:0 0 12px rgba(99,102,241,0.35);"
+        onclick="runJob('blog_generate', this)">
+        ▶ Trigger Autonomous SEO Pipeline
+      </button>
     </div>
 
-    <!-- Right column -->
-    <div style="display:flex;flex-direction:column;gap:12px;">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="section-title" style="margin:0;">GEO Monitor</div>
+      <a href="/geo-monitor/" class="btn btn-ghost btn-sm">Open Detailed View</a>
+    </div>
 
-      <!-- Pipeline health -->
-      <div class="card">
-        <div class="section-title">Pipeline health</div>
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          {% for name, ok in [('News scanner', news_scan_status == 'ok'), ('Blog writer', true), ('File publisher',
-          true)] %}
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            <span style="font-size:12px;color:rgba(255,255,255,0.55);">{{ name }}</span>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span class="pulse-dot {{ 'green' if ok else 'red' }}"></span>
-              {% if ok %}
-              <span style="font-size:11px;color:#4ade80;">Operational</span>
-              {% else %}
-              <span style="font-size:11px;color:#f87171;">Error</span>
-              {% endif %}
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        <div class="divider"></div>
-        <button class="btn btn-primary btn-sm"
-          style="width:100%;justify-content:center;margin-top:4px;background:#6366f1;color:#fff;border-color:#818cf8;box-shadow:0 0 15px rgba(99,102,241,0.4);"
-          onclick="runJob('blog_generate', this)">
-          ✨ Trigger Autonomous SEO Pipeline
-        </button>
+    {% if geo_summary and geo_summary.available %}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      <div style="padding:12px;border-radius:9px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.18);">
+        <div style="font-size:20px;font-weight:700;color:#818cf8;">{{ geo_summary.total_checks }}</div>
+        <div style="font-size:10px;color:#475569;letter-spacing:0.06em;text-transform:uppercase;">checks (30d)</div>
       </div>
-
-      <!-- Intelligence Feed -->
-      <div class="card">
-        <div class="section-title">Last Intelligence Sweep</div>
-        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
-          <span style="font-size:28px;font-weight:700;color:#4ade80;letter-spacing:-0.02em;">{{ news_scan_item_count
-            }}</span>
-          <span style="font-size:12px;color:rgba(255,255,255,0.4);">high-priority events detected</span>
-        </div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.25);">Analyzed 15+ global privacy feeds to identify
-          actionable DPDPA signals.</div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:8px;margin-bottom:12px;">{{
-          news_scan_last_run }}</div>
-
-        {% if latest_news %}
-        <div
-          style="border-top:1px solid rgba(255,255,255,0.05);padding-top:12px;display:flex;flex-direction:column;gap:10px;">
-          {% for news in latest_news %}
-          <div>
-            <a href="{{ news.url }}" target="_blank"
-              style="font-size:12px;color:#a5b4fc;text-decoration:none;display:block;line-height:1.4;margin-bottom:2px;font-weight:500;">{{
-              news.title }}</a>
-            <div style="font-size:10px;color:rgba(255,255,255,0.3);">Source: {{ news.source }}</div>
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
+      <div style="padding:12px;border-radius:9px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.18);">
+        <div style="font-size:20px;font-weight:700;color:#16a34a;">{{ geo_summary.mention_rate }}%</div>
+        <div style="font-size:10px;color:#475569;letter-spacing:0.06em;text-transform:uppercase;">mention rate</div>
       </div>
-
-      <!-- Quick nav -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <a href="/schedule/" class="card-sm"
-          style="text-decoration:none;display:block;cursor:pointer;transition:border-color 0.15s;"
-          onmouseover="this.style.borderColor='rgba(255,255,255,0.14)'"
-          onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-          <div style="margin-bottom:8px;"><svg width="16" height="16" fill="none" stroke="rgba(255,255,255,0.4)"
-              viewBox="0 0 24 24" stroke-width="2">
-              <circle cx="12" cy="12" r="9" />
-              <path stroke-linecap="round" d="M12 7v5l3 3" />
-            </svg></div>
-          <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.65);">Schedule</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:2px;">4 jobs</div>
-        </a>
-        <a href="/context/" class="card-sm"
-          style="text-decoration:none;display:block;cursor:pointer;transition:border-color 0.15s;"
-          onmouseover="this.style.borderColor='rgba(255,255,255,0.14)'"
-          onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
-          <div style="margin-bottom:8px;"><svg width="16" height="16" fill="none" stroke="rgba(255,255,255,0.4)"
-              viewBox="0 0 24 24" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-            </svg></div>
-          <div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.65);">Context</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:2px;">Platform stats</div>
-        </a>
+      <div style="padding:12px;border-radius:9px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.18);">
+        <div style="font-size:20px;font-weight:700;color:#b45309;">{{ geo_summary.engines_count }}</div>
+        <div style="font-size:10px;color:#475569;letter-spacing:0.06em;text-transform:uppercase;">engines tracked</div>
       </div>
+      <div style="padding:12px;border-radius:9px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.18);">
+        <div style="font-size:20px;font-weight:700;color:#dc2626;">{{ geo_summary.positive_count }}</div>
+        <div style="font-size:10px;color:#475569;letter-spacing:0.06em;text-transform:uppercase;">positive mentions</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:#94a3b8;">Last checked: {{ geo_summary.last_checked }}</div>
+    {% else %}
+    <div class="empty-state" style="padding:26px 16px;">
+      <div class="empty-title">No GEO monitor results yet</div>
+      <div class="empty-sub">Run the weekly GEO monitor job from Schedule to populate AI visibility metrics.</div>
+      <a href="/schedule/" class="btn btn-ghost btn-sm" style="margin-top:12px;">Go to Schedule</a>
+    </div>
+    {% endif %}
+  </div>
 
+  {# ══════════════════════════════════════════════════════════════════════
+     QUICK LINKS
+  ══════════════════════════════════════════════════════════════════════ #}
+  <div>
+    <div class="section-title">Quick Access</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+      <a href="/intelligence/" class="card-sm" style="text-decoration:none;display:block;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.07)'">
+        <div style="margin-bottom:8px;">
+          <svg width="16" height="16" fill="none" stroke="rgba(165,180,252,0.6)" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2"/>
+          </svg>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">Intelligence</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">News · Trends · Enforcement</div>
+      </a>
+      <a href="/geo-monitor/" class="card-sm" style="text-decoration:none;display:block;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.07)'">
+        <div style="margin-bottom:8px;">
+          <svg width="16" height="16" fill="none" stroke="rgba(56,189,248,0.7)" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 5h18M3 12h18M3 19h18"/>
+          </svg>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">GEO Monitor</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">AI Visibility</div>
+      </a>
+      <a href="/strategy/" class="card-sm" style="text-decoration:none;display:block;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.07)'">
+        <div style="margin-bottom:8px;">
+          <svg width="16" height="16" fill="none" stroke="rgba(74,222,128,0.6)" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">Strategy</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">Gaps · Rankings · Calendar</div>
+      </a>
+      <a href="/performance/" class="card-sm" style="text-decoration:none;display:block;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.07)'">
+        <div style="margin-bottom:8px;">
+          <svg width="16" height="16" fill="none" stroke="rgba(251,191,36,0.6)" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">Search Performance</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">GSC · Refresh · Health</div>
+      </a>
+      <a href="/queue/" class="card-sm" style="text-decoration:none;display:block;transition:border-color 0.15s;"
+        onmouseover="this.style.borderColor='rgba(0,0,0,0.08)'" onmouseout="this.style.borderColor='rgba(0,0,0,0.07)'">
+        <div style="margin-bottom:8px;">
+          <svg width="16" height="16" fill="none" stroke="rgba(248,113,113,0.6)" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
+          </svg>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">Content Queue</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">{% if total_pending > 0 %}{{ total_pending }} pending{% else %}all clear{% endif %}</div>
+      </a>
     </div>
   </div>
 
 </div>
+
+<script>
+function runJob(jobId, btn) {
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Running…';
+  fetch('/api/run-job/' + jobId, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) showToast('Pipeline triggered — check Schedule for progress', 'success');
+      else showToast('Error: ' + (d.error || 'unknown'), 'error');
+    })
+    .catch(() => showToast('Network error', 'error'))
+    .finally(() => { btn.disabled = false; btn.textContent = orig; });
+}
+</script>
+
 {% endblock %}

@@ -9,8 +9,8 @@ KENSARAI_FACTS: dict = {
         "legal_entity": "KensaraAI Private Limited",
         "tagline": "AI-Powered Compliance & Data Governance for Enterprises",
         "website": "https://kensara.in",
-        "demo_url": "https://kensara.in/request-demo",
-        "founders": "Rudraksh Tatwal (Founder & CEO), Prince Raj (COO & Co-Founder)",
+        "demo_url": "https://www.kensara.in/book-demo",
+        "founders": "Mr Rudraksh Tatwal (Founder & CEO), Mr Prince (Co-founder & COO)",
     },
 
     "sitelinks": {
@@ -21,7 +21,7 @@ KENSARAI_FACTS: dict = {
         "blogs": "https://kensara.in/blogs",
         "credibility": "https://kensara.in/credibility",
         "book_demo": "https://kensara.in/book-demo",
-        "contact": "https://kensara.in/contact",
+        "contact": "https://www.kensara.in/book-demo",
         "privacy": "https://kensara.in/privacy",
         "terms": "https://kensara.in/terms",
     },
@@ -177,7 +177,7 @@ KENSARAI_FACTS: dict = {
         "Never claim anything not in this facts dict",
         "Never mention AI model providers (OpenAI, Anthropic, etc.)",
         "Never cite fake statistics or made-up case studies",
-        "Always end blog posts with CTA to https://kensara.in/request-demo",
+        "Always end blog posts with CTA to https://www.kensara.in/book-demo",
         "Tone: expert, India-focused, practical, DPO-friendly — not American, not generic",
         "Competitor comparisons: factual only, never disparaging",
     ],

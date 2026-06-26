@@ -1,12 +1,21 @@
 {
-  "generated_at": "2026-06-24T06:10:13.809581",
+  "generated_at": "2026-06-26T07:11:42.816331",
   "top_content_gaps": [
+    {
+      "id": 7,
+      "topic": "DPDPA compliance",
+      "competitor_count": 44,
+      "first_seen": "2026-06-25T23:32:27.000662+00:00",
+      "kensara_coverage": "uncovered",
+      "priority_score": 440.0,
+      "status": "open"
+    },
     {
       "id": 1,
       "topic": "DPO Requirements",
       "competitor_count": 3,
       "first_seen": "2026-06-24T00:40:12.244527+00:00",
-      "kensara_coverage": "none",
+      "kensara_coverage": "uncovered",
       "priority_score": 30.0,
       "status": "open"
     },
@@ -15,13 +24,15 @@
       "topic": "DPDPA Consent Rules",
       "competitor_count": 3,
       "first_seen": "2026-06-24T00:40:12.246736+00:00",
-      "kensara_coverage": "none",
+      "kensara_coverage": "uncovered",
       "priority_score": 30.0,
       "status": "open"
     }
   ],
   "competitor_updates": [
-    "https://securiti.ai/blog/updated-dpdpa-guide"
+    "https://securiti.ai/blog/privacyops-agents-scaling-governance/",
+    "https://www.g2.com/products/cookieyes/reviews",
+    "https://www.onetrust.com/content/onetrust/us/en/solutions/ai-governance"
   ],
   "ranking_threats": [],
   "backlink_surges": []

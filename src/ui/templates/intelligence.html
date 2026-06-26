@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}Intelligence · KensaraAI Content Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+    <div>
+      <div class="page-title">Intelligence Feed</div>
+      <div class="page-sub">News · Trending Signals · Enforcement Tracker · {{ now }}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="pulse-dot {{ 'green' if news_scan_status == 'ok' else 'amber' }}"></span>
+      <span style="font-size:12px;color:#6b7280;">
+        {{ news_scan_item_count }} events · last run {{ news_scan_last_run }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="page-content" style="display:flex;flex-direction:column;gap:24px;">
+
+  {# ----------------------------------------------------------------------
+     SCORED NEWS FEED
+  ---------------------------------------------------------------------- #}
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div class="section-title" style="margin:0;">Scored News Feed</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:11px;color:#64748b;">Score 0–10 · blog angle suggestions</span>
+        <button id="news-tracker-toggle" class="btn btn-ghost btn-sm" onclick="toggleNewsTracker()">
+          News Tracker ({{ news_tracker_count if news_tracker_count is defined else 0 }})
+        </button>
+      </div>
+    </div>
+
+    {% if scored_news %}
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      {% for item in scored_news %}
+      <div style="padding:12px 14px;border-radius:9px;background:rgba(0,0,0,0.03);border:1px solid rgba(0,0,0,0.07);">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <div style="flex-shrink:0;width:32px;height:32px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;
+            {% if item.score >= 8 %}background:rgba(74,222,128,0.15);color:#4ade80;
+            {% elif item.score >= 5 %}background:rgba(251,191,36,0.15);color:#fbbf24;
+            {% else %}background:rgba(0,0,0,0.05);color:#6b7280;{% endif %}">
+            {{ item.score }}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <a href="{{ item.url }}" target="_blank"
+              style="font-size:13px;font-weight:600;color:#4f46e5;text-decoration:none;line-height:1.4;display:block;">
+              {{ item.title }}
+            </a>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <span style="font-size:11px;color:#6b7280;">{{ item.source }}</span>
+              {% if item.is_india %}<span style="font-size:10px;background:rgba(74,222,128,0.1);color:#4ade80;padding:1px 6px;border-radius:3px;">IN</span>{% endif %}
+            </div>
+            {% if item.angle %}
+            <div style="font-size:11px;color:#374151;margin-top:6px;line-height:1.5;font-style:italic;padding:7px 10px;background:rgba(99,102,241,0.07);border-radius:6px;border-left:2px solid rgba(99,102,241,0.3);">
+              💡 {{ item.angle }}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">
+        <svg width="20" height="20" fill="none" stroke="#94a3b8" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2"/>
+        </svg>
+      </div>
+      <div class="empty-title">No news scored yet</div>
+      <div class="empty-sub">Intelligence sweep runs daily at 08:00 IST.</div>
+    </div>
+    {% endif %}
+
+    <div id="news-tracker-panel" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(0,0,0,0.08);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:600;color:#1e293b;">Relevant News Tracker (Last 7 days)</div>
+        <span style="font-size:11px;color:#6b7280;">{{ news_tracker_count if news_tracker_count is defined else 0 }} relevant items</span>
+      </div>
+      {% if news_tracker_items %}
+      <div style="overflow:auto;max-height:420px;">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Score</th>
+              <th>Headline</th>
+              <th>Source</th>
+              <th>Tracked At</th>
+              <th>Angle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in news_tracker_items %}
+            <tr>
+              <td>
+                <span style="display:inline-flex;min-width:30px;height:24px;align-items:center;justify-content:center;padding:0 6px;border-radius:6px;font-size:11px;font-weight:700;
+                  {% if item.score >= 8 %}background:rgba(74,222,128,0.15);color:#4ade80;
+                  {% elif item.score >= 6 %}background:rgba(251,191,36,0.15);color:#fbbf24;
+                  {% else %}background:rgba(0,0,0,0.06);color:#6b7280;{% endif %}">
+                  {{ item.score }}
+                </span>
+              </td>
+              <td style="max-width:360px;">
+                <a href="{{ item.url }}" target="_blank" style="font-size:12px;color:#4f46e5;text-decoration:none;line-height:1.35;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                  {{ item.title }}
+                </a>
+              </td>
+              <td style="font-size:11px;color:#374151;white-space:nowrap;">
+                {{ item.source }}
+                {% if item.is_india %}
+                <span style="font-size:10px;background:rgba(74,222,128,0.1);color:#4ade80;padding:1px 5px;border-radius:3px;margin-left:4px;">IN</span>
+                {% endif %}
+              </td>
+              <td style="font-size:11px;color:#6b7280;white-space:nowrap;">{{ item.processed_at }}</td>
+              <td style="font-size:11px;color:#4b5563;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ item.angle or '-' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No relevant tracker rows yet. Run News Scan from Schedule to populate this list.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ----------------------------------------------------------------------
+     TRENDING SIGNALS
+  ---------------------------------------------------------------------- #}
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="section-title" style="margin:0;">Trending Signals</div>
+      <span style="font-size:11px;color:#64748b;">Google Trends · Autocomplete · Reddit · LinkedIn</span>
+    </div>
+
+    {% if trending_keywords %}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      {% for kw in trending_keywords %}
+      <div style="padding:6px 12px;border-radius:20px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);font-size:12px;color:#4f46e5;display:flex;align-items:center;gap:6px;">
+        <span>{{ kw.keyword }}</span>
+        {% if kw.intent_type %}
+        <span style="font-size:10px;color:rgba(165,180,252,0.4);border-left:1px solid rgba(99,102,241,0.3);padding-left:6px;">{{ kw.intent_type }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="font-size:12px;color:#6b7280;">No trending signals yet · monitor runs daily at 06:30 IST.</div>
+    {% endif %}
+  </div>
+
+  {# ----------------------------------------------------------------------
+     ENFORCEMENT TRACKER
+  ---------------------------------------------------------------------- #}
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div>
+        <div class="section-title" style="margin:0;">Enforcement Tracker</div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px;">
+          {{ enforcement_meta.total_count }} total entries · updated {{ enforcement_meta.last_updated }}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button id="sync-enforcement-btn" class="btn btn-indigo btn-sm" onclick="syncEnforcement()">
+          Sync New Fines
+        </button>
+        <a href="/enforcement-tracker.html" target="_blank" class="btn btn-ghost btn-sm">
+          Full Tracker →
+        </a>
+      </div>
+    </div>
+
+    {% if enforcement_actions %}
+    <div style="overflow:auto;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>Authority</th>
+            <th>Date</th>
+            <th>Violation</th>
+            <th>Penalty</th>
+            <th>Summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for action in enforcement_actions %}
+          <tr>
+            <td style="font-size:12px;font-weight:500;white-space:nowrap;">{{ action.company }}</td>
+            <td style="font-size:11px;color:#374151;white-space:nowrap;">{{ action.authority }}</td>
+            <td style="font-size:11px;color:#374151;white-space:nowrap;">{{ action.date }}</td>
+            <td style="font-size:11px;color:#4b5563;">{{ action.violation_type or '—' }}</td>
+            <td style="font-size:11px;font-weight:600;color:{% if action.penalty_amount and action.penalty_amount not in ('N/A','') %}#dc2626{% else %}#94a3b8{% endif %};">
+              {{ action.penalty_amount or '—' }}
+            </td>
+            <td style="font-size:11px;color:#4b5563;max-width:320px;">
+              {{ action.summary }}
+              {% if action.source_url %}
+              <a href="{{ action.source_url }}" target="_blank" style="color:#4f46e5;text-decoration:none;margin-left:4px;">↗</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="font-size:12px;color:#6b7280;">No enforcement actions yet. Regulatory poll runs every 4h.</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function toggleNewsTracker() {
+  const panel = document.getElementById('news-tracker-panel');
+  const btn = document.getElementById('news-tracker-toggle');
+  if (!panel || !btn) return;
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  btn.classList.toggle('btn-indigo', !open);
+}
+
+function syncEnforcement() {
+  const btn = document.getElementById('sync-enforcement-btn');
+  if (!btn) return;
+  
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = 'Syncing... <span class="loading-spinner"></span>';
+  
+  fetch('/api/v1/enforcement/update', {
+    method: 'POST'
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      const added = data.summary.new_actions_added;
+      if (added > 0) {
+        showToast(`Successfully synced! Found ${added} new action(s).`, 'success');
+      } else {
+        showToast('Sync complete. No new enforcement actions found.', 'success');
+      }
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } else {
+      showToast('Sync failed: ' + (data.message || 'Unknown error'), 'error');
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    showToast('Network error while syncing tracker', 'error');
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  });
+}
+</script>
+<style>
+.loading-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0,0,0,0.15);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s ease-in-out infinite;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+</style>
+{% endblock %}
+

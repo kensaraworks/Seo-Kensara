@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Schedule — KensaraAI{% endblock %}
+{% block title %}Schedule · KensaraAI{% endblock %}
 {% block content %}
 
 <div class="page-header">
@@ -26,19 +26,22 @@
         {% for job in jobs %}
         <tr>
           <td>
-            <div style="font-size:13px;font-weight:600;color:#e2e8f0;">{{ job.name }}</div>
-            <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px;max-width:280px;line-height:1.4;">{{ job.description }}</div>
+            <div style="font-size:13px;font-weight:600;color:#0f172a;">{{ job.name }}</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:2px;max-width:280px;line-height:1.4;">{{ job.description }}</div>
           </td>
           <td>
-            <div style="font-size:12px;font-weight:500;color:rgba(255,255,255,0.6);">{{ job.schedule }}</div>
-            <div style="font-size:11px;color:rgba(255,255,255,0.2);font-family:monospace;margin-top:2px;">{{ job.cron }}</div>
+            <div style="font-size:12px;font-weight:500;color:#374151;">{{ job.schedule }}</div>
+            <div style="font-size:11px;color:#64748b;font-family:monospace;margin-top:2px;">{{ job.cron }}</div>
+            {% if job.phase == '2' %}
+            <div style="font-size:11px;color:#64748b;margin-top:4px;">Phase 2 feature · not yet available</div>
+            {% endif %}
           </td>
           <td>
             {% if job.last_run == 'Never' %}
-            <span style="font-size:12px;color:rgba(255,255,255,0.2);font-style:italic;">Never</span>
+            <span style="font-size:12px;color:#94a3b8;font-style:italic;">Never</span>
             {% else %}
-            <span style="font-size:12px;color:rgba(255,255,255,0.45);">{{ job.last_run }}</span>
-            {% if job.duration_ms %}<div style="font-size:11px;color:rgba(255,255,255,0.2);margin-top:2px;">{{ job.duration_ms }}ms</div>{% endif %}
+            <span style="font-size:12px;color:#374151;">{{ job.last_run }}</span>
+            {% if job.duration_ms %}<div style="font-size:11px;color:#64748b;margin-top:2px;">{{ job.duration_ms }}ms</div>{% endif %}
             {% endif %}
           </td>
           <td>
@@ -47,19 +50,40 @@
             {% elif job.last_status == 'error' %}
             <span class="badge badge-rejected">Error</span>
             {% else %}
-            <span style="font-size:11px;color:rgba(255,255,255,0.2);">—</span>
+            <span style="font-size:11px;color:#94a3b8;">—</span>
             {% endif %}
           </td>
           <td>
-            <span style="font-size:12px;color:rgba(255,255,255,0.35);">
+            <span style="font-size:12px;color:#374151;">
               {% if job.item_count %}{{ job.item_count }} item{{ 's' if job.item_count != 1 }}{% else %}—{% endif %}
             </span>
           </td>
           <td style="text-align:right;">
+            {% if job.phase == '2' %}
+            <button class="btn btn-sm" style="opacity:0.5;cursor:not-allowed;" disabled title="Phase 2 feature · not yet available">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run Now
+            </button>
+            {% else %}
             <button class="btn btn-indigo btn-sm" onclick="runJob('{{ job.id }}', this)">
               <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               Run Now
             </button>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td colspan="6" style="padding:8px 16px 12px 16px;border-top:none;">
+            <div style="font-size:11px;color:#64748b;">
+              Last run: {{ job.last_run }} | Result:
+              {% if job.last_status == 'ok' %}
+                success
+              {% elif job.last_status == 'error' %}
+                {{ job.error if job.error else 'error' }}
+              {% else %}
+                pending
+              {% endif %}
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -68,41 +92,21 @@
   </div>
 
   <!-- Info row -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-    <div class="card">
-      <div class="section-title">How it works</div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
-        {% for line in [
-          'Scheduler starts automatically when you run python src/main.py',
-          'All times are IST. Daily news scan at 08:00, blog at 08:15.',
-          'Approved content goes to drafts/ — you publish manually for now.',
-          '"Run Now" triggers the job immediately, ignoring the schedule.'
-        ] %}
-        <div style="display:flex;gap:10px;">
-          <div style="width:5px;height:5px;border-radius:50%;background:rgba(99,102,241,0.6);flex-shrink:0;margin-top:5px;"></div>
-          <span style="font-size:12px;color:rgba(255,255,255,0.4);line-height:1.5;">{{ line }}</span>
-        </div>
-        {% endfor %}
+  <div class="card">
+    <div class="section-title">How it works</div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      {% for line in [
+        'The job scheduler starts automatically alongside the FastAPI server and runs in the background.',
+        'All times are in IST. Daily news scan runs at 08:00, followed by the blog generation pipeline at 08:15.',
+        'The "Run Now" button immediately bypasses the schedule and triggers the job task in real-time.',
+        'Approved blog drafts are saved in drafts/blogs/ and can be published to the website after review.',
+        'Critical regulatory feeds (MeitY, DPBI, CERT-In, etc.) are polled every 4 hours to auto-detect urgent updates.'
+      ] %}
+      <div style="display:flex;gap:10px;">
+        <div style="width:5px;height:5px;border-radius:50%;background:rgba(99,102,241,0.6);flex-shrink:0;margin-top:5px;"></div>
+        <span style="font-size:12px;color:#4b5563;line-height:1.5;">{{ line }}</span>
       </div>
-    </div>
-    <div class="card">
-      <div class="section-title">Phase rollout</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        {% for name, phase, live in [
-          ('News scanner', 'Phase 1', true),
-          ('Blog writer', 'Phase 1', true),
-          ('LinkedIn posts', 'Phase 2', false),
-          ('Newsletter', 'Phase 3', false)
-        ] %}
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span style="font-size:12px;color:rgba(255,255,255,{{ '0.65' if live else '0.3' }});">{{ name }}</span>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:11px;color:rgba(255,255,255,0.2);">{{ phase }}</span>
-            <span class="pulse-dot {{ 'green' if live else '' }}" style="{{ '' if live else 'background:rgba(255,255,255,0.15);animation:none;' }}"></span>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
+      {% endfor %}
     </div>
   </div>
 

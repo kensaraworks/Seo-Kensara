@@ -10,7 +10,7 @@ import structlog
 from typing import Any
 
 from src.config import settings
-from src.queue import job_queue
+from src.queue.job_queue import job_queue
 from src.agents.intent_classifier import classify_intent
 
 log = structlog.get_logger()
@@ -18,10 +18,22 @@ log = structlog.get_logger()
 # --- Helpers ---
 
 def _get_tavily_client():
-    from tavily import AsyncTavilyClient
     if not settings.tavily_api_key:
         raise ValueError("Tavily API key not found in settings")
-    return AsyncTavilyClient(api_key=settings.tavily_api_key)
+    try:
+        from tavily import AsyncTavilyClient
+        return AsyncTavilyClient(api_key=settings.tavily_api_key), True
+    except ImportError:
+        # tavily-python versions may expose only sync TavilyClient
+        from tavily import TavilyClient
+        return TavilyClient(api_key=settings.tavily_api_key), False
+
+
+async def _tavily_search(client: Any, is_async_client: bool, **kwargs) -> dict[str, Any]:
+    """Run Tavily search for either async or sync client implementations."""
+    if is_async_client:
+        return await client.search(**kwargs)
+    return await asyncio.to_thread(client.search, **kwargs)
 
 def _get_groq_client():
     from groq import AsyncGroq
@@ -57,7 +69,9 @@ async def monitor_google_trends() -> None:
     # Backoff implementation would be wrapped around this blocking call
     # Running pytrends in a thread to avoid blocking the async event loop
     def _fetch_trends():
-        pytrends = TrendReq(hl='en-IN', tz=330, retries=3, backoff_factor=0.5)
+        # Avoid retries/backoff kwargs because pytrends 4.9.2 may pass
+        # deprecated urllib3 Retry args (method_whitelist) under urllib3 v2.
+        pytrends = TrendReq(hl='en-IN', tz=330)
         keywords = ["Digital Personal Data Protection Act", "data privacy India", "data breach India"]
         
         breakout_queries = []
@@ -120,8 +134,17 @@ async def monitor_google_autocomplete() -> None:
 async def monitor_reddit_quora() -> None:
     """Search Reddit/Quora via Tavily and use Groq to extract high-priority FAQ."""
     log.info("starting_reddit_quora_monitor")
-    tavily = _get_tavily_client()
-    groq_client = _get_groq_client()
+    try:
+        tavily, is_async_tavily = _get_tavily_client()
+    except Exception as exc:
+        log.error("reddit_quora_tavily_init_failed", error=str(exc))
+        return
+
+    try:
+        groq_client = _get_groq_client()
+    except Exception as exc:
+        log.error("reddit_quora_groq_init_failed", error=str(exc))
+        return
     
     queries = [
         "site:reddit.com DPDPA",
@@ -136,7 +159,14 @@ async def monitor_reddit_quora() -> None:
         try:
             # We request include_raw_content so the LLM can see exactly what the page is about
             # However, Tavily might not always return raw content for all sites, but we'll try
-            search_result = await tavily.search(query=query, search_depth="basic", include_raw_content=True, max_results=3)
+            search_result = await _tavily_search(
+                tavily,
+                is_async_tavily,
+                query=query,
+                search_depth="basic",
+                include_raw_content=True,
+                max_results=3,
+            )
             
             # Combine snippets to send to LLM
             combined_context = ""
@@ -185,8 +215,17 @@ async def monitor_reddit_quora() -> None:
 async def monitor_linkedin() -> None:
     """Search LinkedIn for DPDPA pain points in the last 7 days using Tavily + Groq."""
     log.info("starting_linkedin_monitor")
-    tavily = _get_tavily_client()
-    groq_client = _get_groq_client()
+    try:
+        tavily, is_async_tavily = _get_tavily_client()
+    except Exception as exc:
+        log.error("linkedin_tavily_init_failed", error=str(exc))
+        return
+
+    try:
+        groq_client = _get_groq_client()
+    except Exception as exc:
+        log.error("linkedin_groq_init_failed", error=str(exc))
+        return
     
     queries = [
         "site:linkedin.com/posts DPDPA",
@@ -198,7 +237,13 @@ async def monitor_linkedin() -> None:
     for query in queries:
         try:
             # We want recent results for LinkedIn, though Tavily's time filtering varies.
-            search_result = await tavily.search(query=query, search_depth="basic", max_results=5)
+            search_result = await _tavily_search(
+                tavily,
+                is_async_tavily,
+                query=query,
+                search_depth="basic",
+                max_results=5,
+            )
             
             combined_context = ""
             for res in search_result.get("results", []):

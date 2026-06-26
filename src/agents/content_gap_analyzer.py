@@ -6,18 +6,21 @@ pipeline that runs every Monday. Performs competitor crawling, gap analysis
 generates the Monday Intelligence Brief.
 """
 import asyncio
+import importlib
 import json
 from datetime import datetime, date
 from pathlib import Path
-import random
+from urllib.parse import urlparse, urljoin
 
 import httpx
 import structlog
+from bs4 import BeautifulSoup
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from src.queue.job_queue import job_queue
 from src.config import settings
+from src.agents.serp_intelligence import fetch_advanced_serp
 
 log = structlog.get_logger()
 
@@ -39,6 +42,19 @@ CORE_KEYWORDS = [
     "consent management platform India", "what is DPDPA"
 ]
 
+_SERPER_SEARCH_URL = "https://google.serper.dev/search"
+_TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+
+
+def _domain_host(domain: str) -> str:
+    """Normalize configured competitor domain to a host string."""
+    return domain.split("/")[0].lower().replace("www.", "")
+
+
+def _extract_host(url: str) -> str:
+    """Extract normalized host from URL for domain comparisons."""
+    return (urlparse(url).netloc or "").lower().replace("www.", "")
+
 class ContentGap(BaseModel):
     keyword: str
     top_competitor_url: str
@@ -51,22 +67,8 @@ class ContentGap(BaseModel):
 # Legacy / Deep LLM Gap Analysis (Preserved)
 # ---------------------------------------------------------------------------
 async def _fetch_serper_results(keyword: str) -> list[dict]:
-    if not settings.serper_api_key:
-        log.warning("serper_skipped", reason="SERPER_API_KEY not set")
-        return []
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://google.serper.dev/search",
-                headers={"X-API-KEY": settings.serper_api_key, "Content-Type": "application/json"},
-                json={"q": keyword, "gl": "in", "hl": "en", "num": 5},
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data.get("organic", [])[:5]
-    except Exception as exc:
-        log.error("serper_error", keyword=keyword, error=str(exc))
-        return []
+    serp_data = await fetch_advanced_serp(keyword)
+    return serp_data.get("organic", [])[:5]
 
 async def _analyze_gaps_with_llm(keyword: str, organic_results: list[dict]) -> tuple[list[str], list[str], list[str]]:
     if not settings.nvidia_api_key:
@@ -90,25 +92,62 @@ async def _analyze_gaps_with_llm(keyword: str, organic_results: list[dict]) -> t
 
 
 # ---------------------------------------------------------------------------
-# 1.3.A Weekly Competitor Content Crawl (Mocked)
+# 1.3.A Weekly Competitor Content Crawl
 # ---------------------------------------------------------------------------
 async def _crawl_competitors() -> None:
-    """Mock crawling top 10 DPDPA domains for recent content."""
+    """Crawl competitor domains using Tavily site-scoped DPDPA queries."""
     log.info("competitor_crawl_start")
-    await asyncio.sleep(1.0)
-    today_str = date.today().isoformat()
-    fake_topics = ["DPDPA Consent Rules", "Data Breach Fines India", "DPO Requirements"]
-    
-    for domain in COMPETITOR_DOMAINS:
-        if random.random() > 0.5:
-            topic = random.choice(fake_topics)
-            url = f"https://{domain}/latest-{topic.lower().replace(' ', '-')}"
-            word_count = random.randint(300, 2000)
-            job_queue.record_competitor_intel(
-                domain=domain, url=url, title=f"{topic} Guide", 
-                pub_date=today_str, keyword=topic, word_count=word_count
-            )
-    log.info("competitor_crawl_done")
+    if not settings.tavily_api_key:
+        log.warning("competitor_crawl_skipped", reason="TAVILY_API_KEY not set")
+        return
+
+    async def _crawl_one(domain: str) -> int:
+        query = f"DPDPA compliance site:{domain}"
+        saved = 0
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    _TAVILY_SEARCH_URL,
+                    json={
+                        "api_key": settings.tavily_api_key,
+                        "query": query,
+                        "max_results": 5,
+                        "search_depth": "basic",
+                        "include_answer": False,
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+
+            for result in data.get("results", []):
+                title = (result.get("title") or "").strip()
+                url = (result.get("url") or "").strip()
+                snippet = (result.get("content") or "").strip()
+                if not title or not url:
+                    continue
+
+                keyword = next(
+                    (kw for kw in CORE_KEYWORDS if kw.lower() in (title + " " + snippet).lower()),
+                    "DPDPA compliance",
+                )
+                word_count = len(snippet.split()) if snippet else 0
+                job_queue.record_competitor_intel(
+                    domain=domain,
+                    url=url,
+                    title=title,
+                    pub_date=date.today().isoformat(),
+                    keyword=keyword,
+                    word_count=word_count,
+                    summary=snippet,
+                    gap_flag=False,
+                )
+                saved += 1
+        except Exception as exc:
+            log.warning("competitor_crawl_domain_failed", domain=domain, error=str(exc))
+        return saved
+
+    counts = await asyncio.gather(*[_crawl_one(domain) for domain in COMPETITOR_DOMAINS])
+    log.info("competitor_crawl_done", domains=len(COMPETITOR_DOMAINS), records=sum(counts))
 
 
 # ---------------------------------------------------------------------------
@@ -169,43 +208,152 @@ def _analyze_gaps_db() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# 1.3.C Content Freshness Tracker (Mocked)
+# 1.3.C Content Freshness Tracker
 # ---------------------------------------------------------------------------
+_COMPETITOR_BLOG_URLS: dict[str, str] = {
+    "securiti.ai": "https://securiti.ai/blog/",
+    "cookieyes.com": "https://www.cookieyes.com/blog/",
+    "onetrust.com": "https://www.onetrust.com/blog/",
+}
+
+
 async def _track_content_freshness() -> list[str]:
-    """Mock checking if previously crawled URLs were updated."""
-    await asyncio.sleep(0.5)
-    updated = ["https://securiti.ai/blog/updated-dpdpa-guide"] if random.random() > 0.5 else []
-    return updated
+    """Fetch competitor blog index pages and return the most recent article URL
+    found on each.  Uses curl_cffi with Chrome TLS impersonation to bypass
+    Cloudflare / bot-protection middleware (securiti.ai, cookieyes.com, etc.).
+    """
+    try:
+        async_session_cls = importlib.import_module("curl_cffi.requests").AsyncSession
+    except Exception:
+        log.warning("curl_cffi_not_installed", hint="pip install curl-cffi")
+        return []
+
+    async def _check_one(domain: str, url: str) -> str | None:
+        try:
+            async with async_session_cls() as session:
+                r = await session.get(url, impersonate="chrome", timeout=15)
+                r.raise_for_status()
+                soup = BeautifulSoup(r.text, "lxml")
+                for sel in [
+                    "article a", "h2 a", "h3 a",
+                    ".post-title a", ".entry-title a",
+                    f"a[href*='/{domain.split('.')[0]}']",
+                ]:
+                    link = soup.select_one(sel)
+                    if link:
+                        href = link.get("href", "")
+                        if href:
+                            if not href.startswith("http"):
+                                href = urljoin(url, href)
+                            log.info("competitor_fresh_found", domain=domain, url=href)
+                            return href
+        except Exception as exc:
+            log.warning("competitor_freshness_check_failed", domain=domain, error=str(exc))
+        return None
+
+    results = await asyncio.gather(
+        *[_check_one(domain, url) for domain, url in _COMPETITOR_BLOG_URLS.items()]
+    )
+    return [r for r in results if r]
 
 
 # ---------------------------------------------------------------------------
-# 1.3.D Competitor Keyword Ranking Monitor (Mocked)
+# 1.3.D Competitor Keyword Ranking Monitor
 # ---------------------------------------------------------------------------
 async def _monitor_rankings() -> list[dict]:
-    """Mock Serper.dev tracking week-over-week position changes."""
-    await asyncio.sleep(0.5)
+    """Track competitor rankings in top 10 Serper results for core keywords."""
+    if not settings.serper_api_key:
+        log.warning("competitor_rankings_skipped", reason="SERPER_API_KEY not set")
+        return []
+
     threats = []
-    for kw in CORE_KEYWORDS:
-        if random.random() > 0.7:
-            new_pos = random.randint(1, 5)
-            change = job_queue.record_keyword_ranking(kw, "securiti.ai", new_pos)
-            if change < 0:
-                threats.append({"keyword": kw, "domain": "securiti.ai", "change": change})
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for kw in CORE_KEYWORDS[:10]:
+            try:
+                response = await client.post(
+                    _SERPER_SEARCH_URL,
+                    headers={
+                        "X-API-KEY": settings.serper_api_key,
+                        "Content-Type": "application/json",
+                    },
+                    json={"q": kw, "gl": "in", "hl": "en", "num": 10},
+                )
+                response.raise_for_status()
+                organic = response.json().get("organic", [])[:10]
+            except Exception as exc:
+                log.warning("competitor_ranking_query_failed", keyword=kw, error=str(exc))
+                continue
+
+            found_positions: dict[str, int] = {}
+            for idx, result in enumerate(organic, start=1):
+                host = _extract_host(result.get("link", ""))
+                for domain in COMPETITOR_DOMAINS:
+                    competitor = _domain_host(domain)
+                    if competitor in host and competitor not in found_positions:
+                        found_positions[competitor] = idx
+
+            for competitor, position in found_positions.items():
+                change = job_queue.record_competitor_ranking(kw, competitor, position)
+                # Positive change means competitor moved up (threatening us).
+                if change > 0:
+                    threats.append(
+                        {
+                            "keyword": kw,
+                            "domain": competitor,
+                            "position": position,
+                            "change": change,
+                        }
+                    )
+
+    log.info("competitor_rankings_done", threats=len(threats))
     return threats
 
 
 # ---------------------------------------------------------------------------
-# 1.3.E Competitor Backlink Surge Detector (Mocked)
+# 1.3.E Competitor Backlink Surge Detector
 # ---------------------------------------------------------------------------
 async def _detect_backlink_surges() -> list[dict]:
-    """Mock DataForSEO API checking for domain surges."""
-    await asyncio.sleep(0.5)
+    """Approximate backlink surges using weekly Tavily mention count deltas."""
+    if not settings.tavily_api_key:
+        log.warning("backlink_surge_skipped", reason="TAVILY_API_KEY not set")
+        return []
+
     surges = []
-    if random.random() > 0.8:
-        surges.append({
-            "domain": "cookieyes.com",
-            "new_referring_domains": random.randint(6, 15)
-        })
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for domain in COMPETITOR_DOMAINS:
+            try:
+                response = await client.post(
+                    _TAVILY_SEARCH_URL,
+                    json={
+                        "api_key": settings.tavily_api_key,
+                        "query": f"link:{domain} DPDPA privacy 2026",
+                        "max_results": 10,
+                        "search_depth": "basic",
+                        "include_answer": False,
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                current_count = len(data.get("results", []))
+
+                previous_count = job_queue.get_previous_backlink_count(domain, days_ago=7)
+                job_queue.record_competitor_backlink_count(domain, current_count)
+
+                if current_count > previous_count + 3:
+                    surges.append(
+                        {
+                            "domain": domain,
+                            "new_referring_domains": current_count - previous_count,
+                            "previous_mentions": previous_count,
+                            "current_mentions": current_count,
+                        }
+                    )
+            except Exception as exc:
+                log.warning("backlink_surge_query_failed", domain=domain, error=str(exc))
+
+    log.info("backlink_surge_detection_done", surges=len(surges))
     return surges
 
 

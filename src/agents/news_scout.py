@@ -9,6 +9,7 @@ import structlog
 from pydantic import BaseModel
 
 from src.scrapers.rss_scraper import NewsItem
+from src.scrapers.date_utils import recency_score_delta
 
 log = structlog.get_logger()
 
@@ -75,6 +76,17 @@ _ANGLE_TEMPLATES: list[tuple[str, str]] = [
     ("enforcement", "Enforcement action breakdown — 3 steps Indian DPOs must take this week"),
     ("consent", "Consent compliance gap — how Indian companies can close it before enforcement begins"),
     ("data breach", "Data breach case study — 72-hour DPDPA notification requirements explained"),
+    # Court judgment angle templates
+    ("judgment", "Court ruling decoded — DPDPA compliance implications for Indian enterprises"),
+    ("high court", "High Court ruling on privacy — what every Indian data fiduciary must do next"),
+    ("supreme court", "Supreme Court privacy judgment — updated DPDPA compliance checklist for Indian DPOs"),
+    ("adjudication", "DPBI adjudication order — lessons and remediation steps for data fiduciaries"),
+    ("right to privacy", "Right to privacy ruling — how it reshapes your DPDPA obligations"),
+    # Indian business news angle templates
+    ("startup", "DPDPA and India's startup ecosystem — compliance blueprint for growth-stage companies"),
+    ("fintech", "Fintech DPDPA compliance — how India's fast-growing sector is adapting"),
+    ("edtech", "EdTech data protection — DPDPA obligations for India's education platforms"),
+    ("healthtech", "HealthTech under DPDPA — data fiduciary obligations for Indian health platforms"),
 ]
 
 _DEFAULT_ANGLE = (
@@ -92,7 +104,13 @@ class ScoredNewsItem(BaseModel):
 INDIA_SOURCES = {
     "meity", "meity gazette", "meity press releases", "dpbi", "cert-in", "rbi",
     "sebi", "irdai", "indian court judgments", "et tech", "livemint tech",
-    "yourstory", "inc42", "entrackr", "data security council of india"
+    "yourstory", "inc42", "entrackr", "data security council of india",
+    # Court judgment tracker sources
+    "indiankanoon", "supreme court of india", "delhi high court",
+    "bombay high court", "madras high court", "karnataka high court",
+    "allahabad high court", "gujarat high court", "data protection board (adjudication)",
+    # Indian business news sources
+    "et business news", "livemint", "business standard",
 }
 
 INDIAN_COMPANIES = {
@@ -114,7 +132,9 @@ URGENCY_WORDS = {
 def score_relevance(item: NewsItem) -> int:
     """Score a news item's relevance to Indian DPDPA/GDPR compliance buyers.
 
-    Returns an integer 0–20. Pure keyword matching — no LLM, no network call.
+    Base keyword score is capped at 20. A recency delta (signal 12) is applied
+    on top and may push the final value negative for stale articles.
+    No LLM or network call — pure in-memory computation.
     """
     text = (item.title + " " + item.summary).lower()
     score = 0
@@ -172,12 +192,53 @@ def score_relevance(item: NewsItem) -> int:
     elif "data security council" in source_lower or "dsci" in source_lower or "dsci.in" in item.url:
         score += 2
 
-    return min(20, score)
+    # 10. Court judgment sources — highest intelligence value (+4)
+    # A DPDPA ruling from any court creates authoritative content opportunities
+    is_court_source = any(
+        kw in source_lower for kw in [
+            "indiankanoon", "supreme court", "high court",
+            "data protection board (adjudication)", "nclt", "tdsat", "cci",
+        ]
+    ) or "indiankanoon.org" in item.url
+    if is_court_source:
+        score += 4
+        # Additional bonus when section/rule numbers cited (+2 already handled above,
+        # but boost again for judgments as they cite precise legal provisions)
+        if re.search(r'\b(?:section|sec\.?|rule|art\.?)\s+\d+\b', text):
+            score += 1
+
+    # 11. Indian business news with DPDPA angle (+2)
+    is_india_biz_source = any(
+        kw in source_lower for kw in [
+            "et business news", "inc42", "yourstory", "entrackr",
+            "livemint", "business standard",
+        ]
+    )
+    if is_india_biz_source:
+        score += 2
+
+    # 12. Recency signal — rewards fresh articles, penalises stale ones.
+    # Applied after the keyword cap so a day-old story can exceed 20 and an
+    # old one can go negative, making the >= 6 threshold in the caller
+    # the effective recency gate.
+    base_score = min(20, score)
+    return base_score + recency_score_delta(item.published_date, court_source=is_court_source)
 
 
 def _build_why_relevant(item: NewsItem, score: int) -> str:
     """Generate a short 'why relevant' explanation based on matched keywords."""
     text = (item.title + " " + item.summary).lower()
+    source_lower = item.source.lower()
+
+    # Court judgment signals — highest editorial priority
+    is_court_source = any(
+        kw in source_lower for kw in [
+            "indiankanoon", "supreme court", "high court",
+            "data protection board (adjudication)",
+        ]
+    ) or "indiankanoon.org" in item.url
+    if is_court_source:
+        return "Indian court ruling on privacy or DPDPA — authoritative legal signal for compliance content."
 
     if "dpdpa" in text or "data protection board" in text or "meity" in text:
         return "Directly covers Indian data protection law — critical for DPDPA compliance teams."
@@ -191,6 +252,8 @@ def _build_why_relevant(item: NewsItem, score: int) -> str:
         return "GDPR developments set precedent for DPDPA enforcement expected in India."
     if "consent" in text:
         return "Consent management is a core DPDPA obligation for all data fiduciaries."
+    if any(kw in source_lower for kw in ["inc42", "yourstory", "et business", "entrackr", "livemint"]):
+        return "Indian business press coverage of privacy — signals boardroom-level compliance awareness."
     if score >= 5:
         return "Privacy compliance topic relevant to Indian DPOs and data fiduciaries."
     return "General privacy news with indirect relevance to Indian compliance landscape."
@@ -229,24 +292,8 @@ async def score_news_items(items: list[NewsItem]) -> list[ScoredNewsItem]:
         log.warning("news_scout_no_items")
         return []
 
-    # Run scoring concurrently via asyncio.to_thread (pure CPU/in-memory work,
-    # but keeps async interface consistent for future network-based scoring)
-    tasks = [asyncio.to_thread(_score_item_sync, item) for item in items]
-    scored_all: list[ScoredNewsItem] = await asyncio.gather(*tasks)  # type: ignore[assignment]
+    high_scoring = await score_all_relevant_news_items(items)
 
-    # Filter and log
-    high_scoring = []
-    for result in scored_all:
-        log.debug(
-            "news_scored",
-            title=result.item.title[:60],
-            score=result.relevance_score,
-            source=result.item.source,
-        )
-        if result.relevance_score >= 6:
-            high_scoring.append(result)
-
-    high_scoring.sort(key=lambda x: x.relevance_score, reverse=True)
     top = high_scoring[:3]
 
     log.info(
@@ -267,3 +314,28 @@ async def score_news_items(items: list[NewsItem]) -> list[ScoredNewsItem]:
             )
 
     return top
+
+
+async def score_all_relevant_news_items(items: list[NewsItem]) -> list[ScoredNewsItem]:
+    """Score and return all relevant items (score >= 6), sorted descending."""
+    if not items:
+        return []
+
+    # Run scoring concurrently via asyncio.to_thread (pure CPU/in-memory work,
+    # but keeps async interface consistent for future network-based scoring)
+    tasks = [asyncio.to_thread(_score_item_sync, item) for item in items]
+    scored_all: list[ScoredNewsItem] = await asyncio.gather(*tasks)  # type: ignore[assignment]
+
+    high_scoring = []
+    for result in scored_all:
+        log.debug(
+            "news_scored",
+            title=result.item.title[:60],
+            score=result.relevance_score,
+            source=result.item.source,
+        )
+        if result.relevance_score >= 6:
+            high_scoring.append(result)
+
+    high_scoring.sort(key=lambda x: x.relevance_score, reverse=True)
+    return high_scoring

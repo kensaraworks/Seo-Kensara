@@ -1,24 +1,37 @@
-"""Blog post quality checker — evaluates SEO and content quality signals.
+"""Blog post quality checker — Module 2.6 QA System.
 
-Replaces naive word count / H2 count checks with real, weighted signals
-covering search intent, information density, structure, E-E-A-T, and
-factual specificity.
+Evaluates SEO and content quality signals across 5 dimensions (100-point framework).
+Replaces the old 60-point framework. Enforces minimum threshold 0.55.
+Implements specific checks for India Localization, Readability, Uniqueness,
+and Legal Accuracy as per Module 2.6 specs.
 """
 import re
+import math
 import structlog
+from typing import List, Dict, Tuple, Optional
+from collections import Counter
 from pydantic import BaseModel
 
 from src.agents.blog_writer import BlogPost
 
 log = structlog.get_logger()
 
-# Regulatory bodies that add E-E-A-T credibility
+# ---------------------------------------------------------------------------
+# 2.6 Constants & Specifications
+# ---------------------------------------------------------------------------
+
+# All global regulatory bodies (for E-E-A-T credibility)
 REGULATORY_BODIES = [
     "meity", "edpb", "ico", "data protection board", "dpb",
     "cnil", "bsi", "fdpic", "cppa", "pdpc",
+    "dpbi", "rbi", "sebi", "irdai", "cert-in", "trai"
 ]
 
-# DPDPA-specific section references
+# Specifically for Dimension 5: India Localization Score
+INDIAN_REGULATORY_BODIES = [
+    "dpbi", "meity", "rbi", "sebi", "irdai", "cert-in", "trai", "data protection board"
+]
+
 DPDPA_SECTIONS = [
     "section 4", "section 5", "section 6", "section 7", "section 8",
     "section 9", "section 10", "section 11", "section 12", "section 13",
@@ -26,20 +39,22 @@ DPDPA_SECTIONS = [
     "section 19", "section 20", "chapter ii", "chapter iii", "chapter iv",
     "art. ", "article 5", "article 6", "article 7", "article 13",
     "article 17", "article 25", "article 28", "article 32", "article 33",
-    "gdpr art", "schedule i", "schedule ii",
+    "gdpr art", "schedule i", "schedule ii", "rule 3", "rule"
 ]
 
-# Generic filler phrases that reduce quality
-FILLER_PHRASES = [
+INDIAN_SPELLINGS = [
+    "organisation", "authorised", "recognise", "programme", "centre", "favour",
+    "honour", "behaviour", "labour", "defence", "offence"
+]
+
+# 2.6.B Blocked Phrase List (Expanded to include legacy + new spec)
+GENERIC_FILLER = [
+    # Original Legacy Phrases
     "in today's world",
-    "in today's digital world",
     "in today's fast-paced",
     "it is important to note",
     "it should be noted that",
-    "needless to say",
-    "at the end of the day",
     "in order to",
-    "it goes without saying",
     "to be perfectly honest",
     "as we all know",
     "the fact of the matter is",
@@ -47,9 +62,26 @@ FILLER_PHRASES = [
     "due to the fact that",
     "in light of the fact",
     "for all intents and purposes",
+    
+    # Module 2.6 Spec Additions
+    "in today's digital world",
+    "in the ever-evolving landscape",
+    "it is no secret that",
+    "it goes without saying",
+    "needless to say",
+    "in conclusion",
+    "in summary",
+    "to summarize",
+    "as we can see",
+    "it is worth noting",
+    "in this blog post",
+    "we will explore",
+    "let us dive into",
+    "without further ado",
+    "at the end of the day",
 ]
 
-# Indian-context signals
+# Indian-context signals (Legacy fallback)
 INDIA_CONTEXT_TERMS = [
     "india", "indian", "dpdpa", "meity", "data protection board",
     "data fiduciary", "data principal", "digital personal data",
@@ -57,260 +89,370 @@ INDIA_CONTEXT_TERMS = [
     "bombay", "delhi", "bangalore", "mumbai", "hyderabad",
 ]
 
-# Competitor and legal risk terms handled by risk_classifier
-# (kept here for reference only — not used in quality scoring)
+# Competitor and legal risk terms
 COMPETITOR_NAMES = ["onetrust", "trustarc", "seqrite", "vishwaas"]
 
+LEGAL_OVERCLAIMS = [
+    "100% compliant",
+    "fully compliant",
+    "guarantees compliance",
+    "ensures compliance",
+    "completely eliminate risk",
+    "zero risk",
+    "legally guaranteed",
+    "fully protected",
+]
+
+# 2.6.E Legal Accuracy Flag System
+LEGAL_ACCURACY_TRIGGERS = [
+    "must", "shall", "required to", "obligation", "liability",
+    "non-compliance will result in", "penalty of", "fine of",
+    "liable for", "requires"
+]
+
+# 2.6.F Factual Date Verification
+APPROVED_DATES = [
+    "august 2023",
+    "2025",
+    "november 2026",
+    "may 2027"
+]
+
+# ---------------------------------------------------------------------------
+# Data Models
+# ---------------------------------------------------------------------------
 
 class QualityResult(BaseModel):
     passed: bool
-    score: float  # 0.0 to 1.0
-    issues: list[str]      # block publish — must fix
-    warnings: list[str]    # log but allow
-    signals: dict          # detailed breakdown by category
+    score: float
+    status: str
+    issues: List[str]
+    warnings: List[str]
+    signals: Dict
 
 
-def check_blog_quality(post: BlogPost, keyword: str, intent_type: str = "informational") -> QualityResult:
-    """Evaluate blog post quality across 5 weighted categories (100 pts total).
+# ---------------------------------------------------------------------------
+# Helper Functions (Readability & Uniqueness)
+# ---------------------------------------------------------------------------
 
+def count_syllables(word: str) -> int:
+    """Robust regex-based syllable counter for Flesch-Kincaid."""
+    word = word.lower()
+    if len(word) <= 3:
+        return 1
+    # Remove common silent endings
+    word = re.sub(r'(?:[^laeiouy]es|ed|[^laeiouy]e)$', '', word)
+    word = re.sub(r'^y', '', word)
+    syllables = re.findall(r'[aeiouy]{1,2}', word)
+    return len(syllables) if syllables else 1
+
+def flesch_kincaid_grade(text: str) -> Tuple[float, float]:
+    """Calculate Flesch-Kincaid Grade Level and average sentence length.
+    
+    Formula: 0.39 * (words/sentences) + 11.8 * (syllables/words) - 15.59
+    """
+    sentences = re.split(r'[.!?]+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    if not sentences:
+        return 0.0, 0.0
+    
+    words = re.findall(r'\b[a-zA-Z]+\b', text)
+    if not words:
+        return 0.0, 0.0
+    
+    syllable_count = sum(count_syllables(w) for w in words)
+    word_count = len(words)
+    sentence_count = len(sentences)
+    
+    fk_grade = 0.39 * (word_count / sentence_count) + 11.8 * (syllable_count / word_count) - 15.59
+    avg_sentence_length = word_count / sentence_count
+    
+    return round(fk_grade, 1), round(avg_sentence_length, 1)
+
+def get_tf_idf_similarity(text1: str, text2: str) -> float:
+    """Calculate cosine similarity using native TF-IDF (2.6.D Uniqueness)."""
+    def get_terms(text):
+        words = re.findall(r'\b\w+\b', text.lower())
+        return Counter(words)
+    
+    terms1 = get_terms(text1)
+    terms2 = get_terms(text2)
+    
+    all_terms = set(terms1.keys()).union(set(terms2.keys()))
+    
+    vec1 = [terms1.get(t, 0) for t in all_terms]
+    vec2 = [terms2.get(t, 0) for t in all_terms]
+    
+    dot = sum(v1 * v2 for v1, v2 in zip(vec1, vec2))
+    mag1 = math.sqrt(sum(v ** 2 for v in vec1))
+    mag2 = math.sqrt(sum(v ** 2 for v in vec2))
+    
+    if mag1 == 0 or mag2 == 0:
+        return 0.0
+    return dot / (mag1 * mag2)
+
+
+# ---------------------------------------------------------------------------
+# Main Quality Checker
+# ---------------------------------------------------------------------------
+
+def check_blog_quality(
+    post: BlogPost, 
+    keyword: str, 
+    intent_type: str = "informational",
+    secondary_keywords: List[str] = None,
+    existing_published_texts: List[str] = None
+) -> QualityResult:
+    """Evaluate blog post quality across 5 dimensions (100 pts total) per 2.6.
+    
+    Pass threshold: score >= 0.55.
     Categories:
-        1. Search intent match     (0–20 pts)
-        2. Information density     (0–20 pts)
-        3. Structure completeness  (0–20 pts)
-        4. E-E-A-T signals         (0–20 pts)
-        5. Factual specificity     (0–20 pts)
-
-    Pass threshold: score >= 0.60 (60/100 pts)
-    Issues (block publish): score < 0.40, no CTA, no keyword in H1
-    Warnings (allow with flag): score 0.40–0.60, keyword stuffed (> 5 occurrences)
+        1. Search Intent Alignment (20 pts)
+        2. Information Density & Accuracy (20 pts)
+        3. Content Structure (20 pts)
+        4. E-E-A-T Signals (20 pts)
+        5. India Localization Score (20 pts)
     """
     content = post.content_markdown
     content_lower = content.lower()
     kw_lower = keyword.lower()
-    issues: list[str] = []
-    warnings: list[str] = []
+    issues: List[str] = []
+    warnings: List[str] = []
+    
+    sec_keywords = [k.lower() for k in (secondary_keywords or [])]
 
-    # ------------------------------------------------------------------ #
-    #  1. Search intent match (0-20 pts)                                   #
-    # ------------------------------------------------------------------ #
+    # -----------------------------------------------------------------------
+    # DIMENSION 1: Search Intent Alignment (20 points)
+    # -----------------------------------------------------------------------
     intent_pts = 0
-    intent_signals: dict = {}
-
-    # Keyword in H1 (any line starting with single #)
+    
     h1_lines = [line for line in content.split("\n") if re.match(r"^#\s+", line)]
-    kw_in_h1 = any(kw_lower in line.lower() for line in h1_lines)
-    if kw_in_h1:
+    if any(kw_lower in line.lower() for line in h1_lines):
         intent_pts += 5
-    intent_signals["keyword_in_h1"] = kw_in_h1
-
-    # Keyword in first 150 words
-    first_150 = " ".join(content.split()[:150]).lower()
-    kw_in_intro = kw_lower in first_150
-    if kw_in_intro:
-        intent_pts += 5
-    intent_signals["keyword_in_first_150_words"] = kw_in_intro
-
-    # Keyword in meta description
-    kw_in_meta = kw_lower in post.meta_description.lower()
-    if kw_in_meta:
-        intent_pts += 5
-    intent_signals["keyword_in_meta"] = kw_in_meta
-
-    # Keyword density: appears 2-4 times in body (not stuffed)
-    kw_count = len(re.findall(re.escape(kw_lower), content_lower))
-    kw_density_ok = 2 <= kw_count <= 4
-    if kw_density_ok:
-        intent_pts += 5
-    intent_signals["keyword_occurrences"] = kw_count
-    intent_signals["keyword_density_ok"] = kw_density_ok
-
-    if kw_count > 5:
-        warnings.append(
-            f"Keyword '{keyword}' appears {kw_count} times — possible keyword stuffing (max 4 recommended)"
-        )
-
-    # ------------------------------------------------------------------ #
-    #  2. Information density (0-20 pts)                                   #
-    # ------------------------------------------------------------------ #
-    density_pts = 0
-    density_signals: dict = {}
-
-    # Specific numbers or statistics (digits in context)
-    has_numbers = bool(re.search(r"\b\d[\d,\.]*\s*(%|lakh|crore|million|billion|₹|rs\.?|days?|hours?|weeks?|months?)\b", content_lower))
-    if not has_numbers:
-        # Fallback: any standalone number >= 2 digits near compliance words
-        has_numbers = bool(re.search(r"\b\d{2,}\b", content))
-    if has_numbers:
-        density_pts += 5
-    density_signals["has_numbers_or_stats"] = has_numbers
-
-    # Section references (Section X, Art. Y, Article N)
-    has_section_refs = any(term in content_lower for term in DPDPA_SECTIONS)
-    if has_section_refs:
-        density_pts += 5
-    density_signals["has_section_references"] = has_section_refs
-
-    # Named entities: regulator names, company names
-    has_named_entities = any(body in content_lower for body in REGULATORY_BODIES)
-    if not has_named_entities:
-        # Check for capitalized proper nouns (rough heuristic)
-        has_named_entities = bool(re.search(r"\b[A-Z][a-z]+ (Ltd|Pvt|Inc|Corp|LLP|PLC)\b", content))
-    if has_named_entities:
-        density_pts += 5
-    density_signals["has_named_entities"] = has_named_entities
-
-    # Dates or deadlines mentioned
-    has_dates = bool(re.search(
-        r"\b(202[4-9]|203\d|january|february|march|april|may|june|july|august"
-        r"|september|october|november|december|q[1-4]\s+20\d\d|fy\s*20\d\d"
-        r"|deadline|by\s+\w+\s+\d{4}|within\s+\d+\s+(days?|hours?))\b",
-        content_lower
-    ))
-    if has_dates:
-        density_pts += 5
-    density_signals["has_dates_or_deadlines"] = has_dates
-
-    # ------------------------------------------------------------------ #
-    #  3. Structure completeness (0-20 pts)                                #
-    # ------------------------------------------------------------------ #
-    structure_pts = 0
-    structure_signals: dict = {}
-
-    # Has H1 (# heading)
-    has_h1 = len(h1_lines) >= 1
-    if has_h1:
-        structure_pts += 5
-    structure_signals["has_h1"] = has_h1
-
-    # Has 3+ H2 headings (## heading)
-    h2_lines = [line for line in content.split("\n") if re.match(r"^##\s+", line)]
-    has_enough_h2 = len(h2_lines) >= 3
-    if has_enough_h2:
-        structure_pts += 10
-    structure_signals["h2_count"] = len(h2_lines)
-    structure_signals["has_3_or_more_h2"] = has_enough_h2
-
-    # Has conclusion paragraph (last 200 words contain conclusion signals)
-    last_200 = " ".join(content.split()[-200:]).lower()
-    has_conclusion = any(term in last_200 for term in [
-        "conclusion", "summary", "in summary", "to summarise", "to summarize",
-        "key takeaway", "final", "request-demo", "kensara.in", "book a demo",
-        "get started", "contact us", "request a demo",
-    ])
-    if has_conclusion:
-        structure_pts += 5
-    structure_signals["has_conclusion"] = has_conclusion
-
-    # ------------------------------------------------------------------ #
-    #  4. E-E-A-T signals & Intent-Specific Requirements (0-20 pts)        #
-    # ------------------------------------------------------------------ #
-    eeat_pts = 0
-    eeat_signals: dict = {}
-
-    # References specific DPDPA sections
-    has_dpdpa_refs = any(term in content_lower for term in [
-        "section", "chapter", "schedule", "clause", "art.", "article",
-        "dpdpa", "digital personal data protection act",
-    ])
-    if has_dpdpa_refs:
-        eeat_pts += 10
-    eeat_signals["has_regulatory_references"] = has_dpdpa_refs
-
-    # Mentions real regulatory bodies
-    has_regulators = any(body in content_lower for body in REGULATORY_BODIES)
-    if has_regulators:
-        eeat_pts += 5
-    eeat_signals["mentions_regulatory_bodies"] = has_regulators
-
-    # Intent-specific structure checks
-    if intent_type == "commercial":
-        # Commercial content should have comparison tables (markdown table)
-        has_table = bool(re.search(r"\|.*\|.*\n\|[-:\s|]+\|", content))
-        if has_table:
-            eeat_pts += 5
-        eeat_signals["has_comparison_table"] = has_table
-    elif intent_type == "informational":
-        # Informational content should not have aggressive sales words
-        aggressive_sales = ["buy now", "subscribe today", "limited time offer", "purchase immediately"]
-        has_aggressive = any(term in content_lower for term in aggressive_sales)
-        if not has_aggressive:
-            eeat_pts += 5
-        eeat_signals["no_aggressive_sales"] = not has_aggressive
-    else:
-        # Default for transactional/others
-        eeat_pts += 5
-
-    # Check correct CTA url
-    expected_cta = "kensara.in/request-demo"
-    if intent_type == "informational":
-        expected_cta = "kensara.in/resources"
-    elif intent_type == "commercial":
-        expected_cta = "kensara.in/features"
         
-    has_cta = expected_cta in content_lower
-    eeat_signals["has_correct_cta"] = has_cta
+    first_150 = " ".join(content.split()[:150]).lower()
+    if kw_lower in first_150:
+        intent_pts += 5
+        
+    if post.title and kw_lower in post.title.lower():
+        intent_pts += 5
+        
+    word_count = len(re.findall(r'\b\w+\b', content))
+    kw_count = len(re.findall(r'\b' + re.escape(kw_lower) + r'\b', content_lower))
+    kw_density = (kw_count / max(1, word_count)) * 100
+    if 0.5 <= kw_density <= 1.5:
+        intent_pts += 3
+        
+    sec_kws_found = sum(1 for k in sec_keywords if k in content_lower)
+    if sec_kws_found >= 3:
+        intent_pts += 2
 
-    # ------------------------------------------------------------------ #
-    #  5. Factual specificity (0-20 pts)                                   #
-    # ------------------------------------------------------------------ #
-    specificity_pts = 20  # start at max, subtract for filler
-    specificity_signals: dict = {}
+    # -----------------------------------------------------------------------
+    # DIMENSION 2: Information Density & Accuracy (20 points)
+    # -----------------------------------------------------------------------
+    density_pts = 0
+    
+    # 3 specific statistics with inline attribution (8 pts)
+    # Heuristic: counts %, ₹, or Rs. figures
+    stat_count = len(re.findall(r"\d+(?:\.\d+)?%|₹\s*\d+|rs\.?\s*\d+", content, re.IGNORECASE))
+    if stat_count >= 3:
+        density_pts += 8
+        
+    # Minimum 2 regulatory section/rule citations (5 pts)
+    sec_refs = len(re.findall(r"\bsection\s+\d+\b|\brule\s+\d+\b|\bchapter\s+[ivx]+\b", content_lower))
+    if sec_refs >= 2:
+        density_pts += 5
+        
+    # Named entities (Indian regulators) (4 pts)
+    if any(reg in content_lower for reg in REGULATORY_BODIES):
+        density_pts += 4
+        
+    # No generic filler phrases (3 pts)
+    filler_count = sum(1 for f in GENERIC_FILLER if f in content_lower)
+    if filler_count == 0:
+        density_pts += 3
 
-    # Detect filler phrases (-5 each, floor at 0)
-    filler_found = []
-    for phrase in FILLER_PHRASES:
-        if phrase in content_lower:
-            filler_found.append(phrase)
-            specificity_pts = max(0, specificity_pts - 5)
-    specificity_signals["filler_phrases_found"] = filler_found
+    # Penalty: -5 points per blocked phrase
+    penalty_points = filler_count * 5
 
-    # Has India-specific context (+10, but only add if not already deducted away)
-    has_india_context = any(term in content_lower for term in INDIA_CONTEXT_TERMS)
-    if has_india_context:
-        specificity_pts = min(20, specificity_pts + 10)
-    specificity_signals["has_india_context"] = has_india_context
+    # -----------------------------------------------------------------------
+    # DIMENSION 3: Content Structure (20 points)
+    # -----------------------------------------------------------------------
+    structure_pts = 0
+    
+    if h1_lines:
+        structure_pts += 3
+        
+    h2_lines = [line for line in content.split("\n") if re.match(r"^##\s+", line)]
+    if len(h2_lines) >= 4:
+        structure_pts += 3
+        
+    question_h2s = sum(1 for h2 in h2_lines if "?" in h2)
+    if question_h2s >= 2:
+        structure_pts += 3
+        
+    first_200 = " ".join(content.split()[:200]).lower()
+    if "**quick answer**" in first_200 or "quick answer:" in first_200:
+        structure_pts += 4
+        
+    faq_section = re.search(r"##.*faq|##.*frequently asked questions", content_lower)
+    if faq_section:
+        faq_text = content_lower[faq_section.end():]
+        faq_q_count = len(re.findall(r"###\s+.*?\?", faq_text))
+        if faq_q_count >= 3:
+            structure_pts += 4
+            
+    if "kensara.in" in content_lower:
+        structure_pts += 3
 
-    # Has actionable steps (numbered list or checklist pattern)
-    has_actionable = bool(re.search(
-        r"(^\s*\d+\.\s+.+$|^\s*[-*]\s+.+$|^\s*-\s*\[.?\]\s+.+$)",
-        content,
-        re.MULTILINE
-    ))
-    if has_actionable:
-        specificity_pts = min(20, specificity_pts + 10)
-    specificity_signals["has_actionable_steps"] = has_actionable
+    # -----------------------------------------------------------------------
+    # DIMENSION 4: E-E-A-T Signals (20 points)
+    # -----------------------------------------------------------------------
+    eeat_pts = 0
+    
+    first_500 = " ".join(content.split()[:500]).lower()
+    if (
+        ("rudraksh tatwal" in first_500 and ("founder" in first_500 or "ceo" in first_500))
+        or ("mr prince" in first_500 and ("co-founder" in first_500 or "cofounder" in first_500 or "coo" in first_500))
+    ):
+        eeat_pts += 5
+        
+    external_links = re.findall(r"\[.+?\]\(https?://(?!kensara\.in)[^)]+\)", content)
+    if len(external_links) >= 2:
+        eeat_pts += 4
+        
+    gov_links = re.findall(r"dpboard\.gov\.in|meity\.gov\.in|gazette\.gov\.in|rbi\.org\.in|sebi\.gov\.in", content_lower)
+    if gov_links:
+        eeat_pts += 4
+        
+    if re.search(r"last updated|date modified|updated on|published on", content_lower):
+        eeat_pts += 3
+        
+    if "iapp" in content_lower or "years of experience" in content_lower or "founder" in content_lower:
+        eeat_pts += 4
 
-    # Cap at 20
-    specificity_pts = min(20, specificity_pts)
+    # -----------------------------------------------------------------------
+    # DIMENSION 5: India Localization Score (20 points)
+    # -----------------------------------------------------------------------
+    india_pts = 0
+    
+    if "₹" in content:
+        india_pts += 4
+        
+    if any(reg in content_lower for reg in INDIAN_REGULATORY_BODIES):
+        india_pts += 4
+        
+    if sec_refs > 0:
+        india_pts += 4
+        
+    # Check for Pvt Ltd, Ltd or common Indian entities
+    if re.search(r"\b[A-Z][a-z]+ (Ltd|Pvt|Private Limited)\b", content) or \
+       any(c in content_lower for c in ["tata", "reliance", "infosys", "wipro", "zomato", "paytm", "hdfc", "sbi"]):
+        india_pts += 4
+        
+    if any(sp in content_lower for sp in INDIAN_SPELLINGS):
+        india_pts += 2
+        
+    if re.search(r"deadline|by 2026|by 2027", content_lower):
+        india_pts += 2
 
-    # ------------------------------------------------------------------ #
-    #  Final scoring                                                        #
-    # ------------------------------------------------------------------ #
-    total_pts = intent_pts + density_pts + structure_pts + eeat_pts + specificity_pts
-    score = round(total_pts / 100.0, 3)
+    # -----------------------------------------------------------------------
+    # Final Scoring
+    # -----------------------------------------------------------------------
+    total_pts = intent_pts + density_pts + structure_pts + eeat_pts + india_pts - penalty_points
+    score = max(0, total_pts) / 100.0
 
-    # Determine issues (hard blockers)
-    if score < 0.40:
-        issues.append(
-            f"Quality score {score:.2f} is below minimum threshold 0.40 — content must be rewritten"
-        )
-    if not has_cta:
-        issues.append(f"Missing correct CTA link ({expected_cta}) — required for this intent type")
-    if not kw_in_h1:
-        issues.append(f"Primary keyword '{keyword}' not found in H1 — critical for SEO ranking")
+    # -----------------------------------------------------------------------
+    # 2.6.B Blocked Phrases & Legal Over-claims
+    # -----------------------------------------------------------------------
+    if filler_count > 2:
+        issues.append("REJECTED: More than 2 generic filler phrases detected.")
+        
+    for overclaim in LEGAL_OVERCLAIMS:
+        if overclaim in content_lower:
+            warnings.append(f"[LEGAL_ACCURACY] Legal over-claim detected: '{overclaim}'.")
+            
+    # Check for negative competitor framing dynamically
+    for competitor in COMPETITOR_NAMES:
+        # Simple heuristic for negative framing around competitor names
+        if re.search(rf"\b{competitor}\b.*\b(bad|worse|inferior|terrible|fail)\b", content_lower) or \
+           re.search(rf"\b(bad|worse|inferior|terrible|fail)\b.*\b{competitor}\b", content_lower) or \
+           f"{competitor} is bad" in content_lower:
+            issues.append(f"[HIGH RISK] Negative competitor framing detected against {competitor}.")
 
-    # Warnings (score between floor and pass threshold)
-    if 0.40 <= score < 0.60:
-        warnings.append(
-            f"Quality score {score:.2f} is in warning range (0.40–0.60) — review before publishing"
-        )
+    # -----------------------------------------------------------------------
+    # 2.6.C Readability
+    # -----------------------------------------------------------------------
+    fk_grade, avg_sentence_len = flesch_kincaid_grade(content)
+    if fk_grade > 14:
+        warnings.append(f"Readability too academic: Grade {fk_grade}. Target 10-12.")
+    elif fk_grade < 8:
+        warnings.append(f"Readability too simple: Grade {fk_grade}. Target 10-12.")
+        
+    sentences = re.split(r'[.!?]+', content)
+    long_sentences = [s for s in sentences if len(re.findall(r'\b\w+\b', s)) > 35]
+    if long_sentences:
+        warnings.append(f"{len(long_sentences)} sentences exceed 35 words. Split them.")
 
-    passed = score >= 0.60 and len(issues) == 0
+    # -----------------------------------------------------------------------
+    # 2.6.D Uniqueness Check (TF-IDF)
+    # -----------------------------------------------------------------------
+    if existing_published_texts:
+        max_sim = 0.0
+        for published in existing_published_texts:
+            sim = get_tf_idf_similarity(content, published)
+            max_sim = max(max_sim, sim)
+        
+        if max_sim > 0.70:
+            issues.append(f"REJECTED: Near-duplicate detected (TF-IDF similarity {max_sim:.2f} > 0.70)")
+        elif max_sim >= 0.50:
+            warnings.append(f"RELATED: Moderate similarity detected ({max_sim:.2f})")
+
+    # -----------------------------------------------------------------------
+    # 2.6.E Legal Accuracy Flags
+    # -----------------------------------------------------------------------
+    for s in sentences:
+        s_lower = s.lower()
+        # Ensure we only flag sentences containing trigger words
+        # Only matching as isolated words where applicable
+        if re.search(r'\b(must|shall|required to|obligation|liability|non-compliance will result in|penalty of|fine of|liable for)\b|section \d+ requires', s_lower):
+            warnings.append("[LEGAL REVIEW REQUIRED] Sentence contains liability/obligation triggers.")
+            break # Flag once per post
+
+    # -----------------------------------------------------------------------
+    # 2.6.F Factual Dates Verification
+    # -----------------------------------------------------------------------
+    date_pattern = r"\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+20\d{2}\b|\b20\d{2}\b"
+    found_dates = re.findall(date_pattern, content_lower)
+    for d in found_dates:
+        # Check if the date string is part of approved dates
+        if not any(d in app_d or app_d in d for app_d in APPROVED_DATES):
+            # Only trigger once per unverified date
+            w_msg = f"[UNVERIFIED DATE] {d} found. Verify against enforcement calendar."
+            if w_msg not in warnings:
+                warnings.append(w_msg)
+
+    # -----------------------------------------------------------------------
+    # Status Assignment
+    # -----------------------------------------------------------------------
+    if score < 0.40 or issues:
+        status = "REJECTED"
+        passed = False
+    elif 0.40 <= score < 0.55:
+        status = "NEEDS REVISION"
+        passed = False
+    elif 0.55 <= score < 0.70:
+        status = "LOW RISK AUTO-PUBLISH"
+        passed = True
+    else:
+        status = "QUALITY"
+        passed = True
 
     log.info(
         "quality_check_done",
         title=post.title[:60],
         score=score,
+        status=status,
         passed=passed,
         issues=len(issues),
         warnings=len(warnings),
@@ -319,13 +461,17 @@ def check_blog_quality(post: BlogPost, keyword: str, intent_type: str = "informa
     return QualityResult(
         passed=passed,
         score=score,
+        status=status,
         issues=issues,
         warnings=warnings,
         signals={
-            "search_intent": {"pts": intent_pts, "max": 20, **intent_signals},
-            "information_density": {"pts": density_pts, "max": 20, **density_signals},
-            "structure": {"pts": structure_pts, "max": 20, **structure_signals},
-            "eeat": {"pts": eeat_pts, "max": 20, **eeat_signals},
-            "factual_specificity": {"pts": specificity_pts, "max": 20, **specificity_signals},
-        },
+            "intent_pts": intent_pts,
+            "density_pts": density_pts,
+            "structure_pts": structure_pts,
+            "eeat_pts": eeat_pts,
+            "india_pts": india_pts,
+            "penalty_pts": penalty_points,
+            "fk_grade": fk_grade,
+            "avg_sentence_len": avg_sentence_len
+        }
     )

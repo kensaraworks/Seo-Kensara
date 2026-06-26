@@ -1,151 +1,222 @@
-"""Context builder — assembles full LLM-injection string from KensaraAI facts + stats.
+"""Context builder — assembles structured Keyword Brief for LLM-injection.
 
 Usage:
-    from src.context.builder import build_context
-    ctx = build_context(keyword="DPDPA compliance software", news_angle="ICO fines X for breach")
-    # Inject ctx into any prompt as the authoritative brand/product context block.
+    from src.context.builder import assemble_keyword_brief
+    brief = assemble_keyword_brief(keyword="DPDPA compliance software", intent_type="commercial")
 """
 
+import json
 import structlog
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any
 
 from src.context.kensarai_facts import KENSARAI_FACTS
-from src.context.platform_stats import PLATFORM_STATS
+from src.context.platform_stats import get_platform_stats
+from src.engines.serp_formatter import analyze_serp_format, get_target_word_count
 
 log = structlog.get_logger()
 
+# --- Pydantic Models for Keyword Brief (Module 2.1.A) ---
+
+class PrimarySignals(BaseModel):
+    primary_keyword: str
+    cluster_id: str
+    intent_type: str
+    tier: int
+    target_word_count: str
+    target_reading_grade: str = "10-12"
+    schema_types_required: List[str]
+    cta_type: str
+
+class SerpIntelligence(BaseModel):
+    top_5_competitor_urls: List[str] = []
+    top_5_competitor_h2_structures: List[Dict[str, Any]] = []
+    top_5_avg_word_count: int = 1500
+    featured_snippet_exists: bool = False
+    featured_snippet_format: Optional[str] = None
+    ai_overview_exists: bool = False
+    ai_overview_competitor: Optional[str] = None
+    paa_questions: List[str] = []
+
+class ContentGap(BaseModel):
+    gap_topics: List[str] = []
+    thin_coverage_topics: List[str] = []
+    unique_angles: List[str] = []
+
+class IndiaLocalization(BaseModel):
+    relevant_regulators: List[str] = []
+    relevant_dpdpa_sections: List[str] = []
+    relevant_dpdpa_rules: List[str] = []
+    indian_company_examples: List[str] = []
+    indian_penalty_refs: List[str] = []
+    compliance_deadlines: List[str] = []
+    india_english: bool = True
+
+class BrandContext(BaseModel):
+    kensara_relevant_features: List[str] = []
+    kensara_relevant_stats: List[str] = []
+    competitor_comparison_facts: List[str] = []
+    founder_credentials: str = "Mr Rudraksh Tatwal, Founder & CEO; Mr Prince, Co-founder & COO"
+    cta_url: str
+    cta_text: str
+
+class InternalLinkTargets(BaseModel):
+    mandatory_internal_links: List[Dict[str, str]] = []
+    optional_internal_links: List[Dict[str, str]] = []
+    links_to_avoid: List[str] = []
+
+class FreshnessRequirements(BaseModel):
+    requires_current_date: bool = True
+    stat_freshness_year: int = 2024
+    regulatory_reference_cutoff: Optional[str] = None
+
+class KeywordBrief(BaseModel):
+    primary_signals: PrimarySignals
+    serp_intelligence: SerpIntelligence
+    content_gap: ContentGap
+    india_localization: IndiaLocalization
+    brand_context: BrandContext
+    internal_link_targets: InternalLinkTargets
+    freshness_requirements: FreshnessRequirements
+    serp_format_strategy: str = ""
+
+
+def duplicate_content_precheck(keyword: str) -> str:
+    """2.1.C Duplicate Content Pre-Check.
+    Queries RAG vector database to prevent keyword cannibalization.
+    Returns: 'proceed', 'refresh', or 'related'
+    """
+    try:
+        from src.rag.retrieval import retrieve
+        
+        # Query the published posts collection
+        results = retrieve(query=keyword, collection_key="published_posts", top_k=1)
+        
+        if not results:
+            return "proceed"
+            
+        top_match = results[0]
+        score = top_match.get("rerank_score", 0.0)
+        
+        # Map cross-encoder scores (roughly) to the 0-1 similarity scale requested in spec
+        # Cross encoders usually range from -10 to +10. >3 is very similar, >0 is somewhat similar.
+        if score > 4.0:
+            # Equivalent to > 0.75 similarity
+            return "refresh"
+        elif score > 0.0:
+            # Equivalent to 0.50-0.75 similarity
+            return "related"
+        else:
+            return "proceed"
+            
+    except Exception as e:
+        log.warning("duplicate_check_failed", error=str(e))
+        return "proceed"
+
+def assemble_keyword_brief(
+    keyword: str,
+    intent_type: str = "informational",
+    tier: int = 1,
+    cluster_id: str = "general",
+    news_angle: str = "",
+    paa_questions: List[str] = None,
+    serp_intelligence: Optional[SerpIntelligence] = None
+) -> KeywordBrief:
+    """Assemble full Keyword Brief JSON for LLM injection."""
+    
+    # Pre-Check
+    status = duplicate_content_precheck(keyword)
+    if status != "proceed":
+        log.warning("duplicate_content_flag", keyword=keyword, status=status)
+
+    facts = KENSARAI_FACTS
+    stats = get_platform_stats()  # reads from disk — picks up UI edits without restart
+    
+    if serp_intelligence:
+        serp = serp_intelligence
+    else:
+        # Mock SERP intelligence until Module 1.3 is connected
+        serp = SerpIntelligence(
+            top_5_avg_word_count=1500,
+            featured_snippet_exists=True,
+            featured_snippet_format="paragraph",
+            paa_questions=paa_questions or [],
+        )
+    serp_fmt = analyze_serp_format(serp, tier=tier)
+    avg_word_count = serp_fmt.avg_competitor_word_count or 1500
+    
+    # Primary Signals
+    schema_reqs = ["Article", "BreadcrumbList"]
+    cta_type = "lead_gen"
+    cta_url = "https://www.kensara.in/dpdpa"
+    cta_text = "Download our free DPDPA Compliance Checklist"
+    
+    if intent_type == "commercial":
+        cta_type = "compare"
+        cta_url = "https://www.kensara.in/benefits"
+        cta_text = f"See how Kensara handles {keyword} at a fraction of OneTrust's cost."
+        schema_reqs.append("FAQPage")
+    elif intent_type == "transactional":
+        cta_type = "book_demo"
+        cta_url = "https://www.kensara.in/book-demo"
+        cta_text = "Book a free 30-minute DPDPA assessment with our certified team."
+
+    primary = PrimarySignals(
+        primary_keyword=keyword,
+        cluster_id=cluster_id,
+        intent_type=intent_type,
+        tier=tier,
+        target_word_count=serp_fmt.calibrated_word_count_range,
+        schema_types_required=schema_reqs,
+        cta_type=cta_type
+    )
+    
+    gap = ContentGap(
+        unique_angles=["AI-native compliance vs legacy workflows"]
+    )
+    
+    localization = IndiaLocalization(
+        relevant_regulators=["DPBI", "MeitY"],
+        indian_company_examples=["Reliance", "Tata Motors"], # Mocks
+        compliance_deadlines=["Ongoing"]
+    )
+    
+    # Filter Brand Context based on intent
+    rel_features = [desc for name, desc in facts["key_features"].items()]
+    comp_facts = facts["differentiators"] if intent_type == "commercial" else []
+    
+    brand = BrandContext(
+        kensara_relevant_features=rel_features[:3],
+        kensara_relevant_stats=[f"{k}: {v}" for k, v in stats.items() if isinstance(v, (int, float)) and v > 0],
+        competitor_comparison_facts=comp_facts,
+        cta_url=cta_url,
+        cta_text=cta_text
+    )
+    
+    links = InternalLinkTargets(
+        mandatory_internal_links=[{"anchor_text": "Kensara Homepage", "url": "https://kensara.in"}]
+    )
+    
+    freshness = FreshnessRequirements()
+    
+    serp_strategy = serp_fmt.strategy_instruction
+    
+    brief = KeywordBrief(
+        primary_signals=primary,
+        serp_intelligence=serp,
+        content_gap=gap,
+        india_localization=localization,
+        brand_context=brand,
+        internal_link_targets=links,
+        freshness_requirements=freshness,
+        serp_format_strategy=serp_strategy
+    )
+    
+    log.debug("keyword_brief_assembled", keyword=keyword, intent=intent_type)
+    return brief
 
 def build_context(keyword: str = "", news_angle: str = "") -> str:
-    """Assemble full context string for LLM injection.
-
-    Args:
-        keyword: Primary SEO keyword being targeted (e.g. "DPDPA compliance software").
-        news_angle: News hook to weave into the content (e.g. "ICO fines company ₹X").
-
-    Returns:
-        Structured string ready for injection into any LLM prompt.
-    """
-    facts = KENSARAI_FACTS
-    stats = PLATFORM_STATS
-
-    # --- Company identity ---
-    company_block = (
-        f"COMPANY: {facts['company']['name']} ({facts['company']['legal_entity']})\n"
-        f"TAGLINE: {facts['company']['tagline']}\n"
-        f"WEBSITE: {facts['company']['website']}\n"
-        f"DEMO URL: {facts['company']['demo_url']}\n"
-    )
-
-    # --- Sitelinks ---
-    sitelinks_lines = ["SITELINKS (use these URLs for internal linking/CTAs):"]
-    for name, url in facts["sitelinks"].items():
-        sitelinks_lines.append(f"- {name.replace('_', ' ').title()}: {url}")
-    sitelinks_block = "\n".join(sitelinks_lines) + "\n"
-
-    # --- What it is ---
-    what_block = f"WHAT IT IS:\n{facts['what_it_is']}\n"
-
-    # --- Credentials ---
-    creds = facts["credentials"]
-    creds_block = (
-        f"CREDENTIALS:\n"
-        f"- {creds['meity']}\n"
-        f"- {creds['iitg']}\n"
-    )
-
-    # --- Modules ---
-    modules_lines = ["MODULES:"]
-    for code, mod in facts["modules"].items():
-        modules_lines.append(f"- {code} {mod['name']}: {mod['description']}")
-    modules_block = "\n".join(modules_lines) + "\n"
-
-    # --- Key features ---
-    features = facts["key_features"]
-    features_lines = ["KEY FEATURES:"]
-    for name, desc in features.items():
-        features_lines.append(f"- {name.upper()}: {desc}")
-    features_block = "\n".join(features_lines) + "\n"
-
-    # --- Differentiators ---
-    diff_lines = ["DIFFERENTIATORS (use these — verified facts only):"]
-    for d in facts["differentiators"]:
-        diff_lines.append(f"- {d}")
-    diff_block = "\n".join(diff_lines) + "\n"
-
-    # --- Pricing ---
-    pricing = facts["pricing"]
-    pricing_block = (
-        f"PRICING:\n"
-        f"- KensaraAI: {pricing['kensarai_range']} ({pricing['kensarai_note']})\n"
-        f"- OneTrust benchmark: {pricing['onetrust_benchmark']}\n"
-        f"- {pricing['rationale']}\n"
-    )
-
-    # --- Competitors ---
-    comp_lines = ["COMPETITORS (factual comparisons only — never disparage):"]
-    for name, comp in facts["competitors"].items():
-        comp_lines.append(
-            f"- {name}: {comp['description']}. Weakness: {comp['weakness']}"
-        )
-    comp_block = "\n".join(comp_lines) + "\n"
-
-    # --- Platform stats (only include if non-zero) ---
-    stats_lines = []
-    if stats["dsars_processed"] > 0:
-        stats_lines.append(f"- DSARs processed: {stats['dsars_processed']:,}")
-    if stats["consents_recorded"] > 0:
-        stats_lines.append(f"- Consents recorded: {stats['consents_recorded']:,}")
-    if stats["breach_clocks_started"] > 0:
-        stats_lines.append(f"- Breach clocks started: {stats['breach_clocks_started']:,}")
-    if stats["clients_onboarded"] > 0:
-        stats_lines.append(f"- Clients onboarded: {stats['clients_onboarded']:,}")
-
-    if stats_lines:
-        stats_block = "PLATFORM TRACTION (real numbers — use in content):\n" + "\n".join(stats_lines) + "\n"
-    else:
-        stats_block = ""
-
-    # --- Content rules ---
-    rules_lines = ["CONTENT RULES (mandatory — do not violate):"]
-    for rule in facts["content_rules"]:
-        rules_lines.append(f"- {rule}")
-    rules_block = "\n".join(rules_lines) + "\n"
-
-    # --- Keyword + news angle (session-specific) ---
-    session_lines = []
-    if keyword:
-        session_lines.append(f"TARGET KEYWORD: {keyword}")
-    if news_angle:
-        session_lines.append(f"NEWS ANGLE: {news_angle}")
-    session_block = ("\n".join(session_lines) + "\n") if session_lines else ""
-
-    # --- Assemble ---
-    sections = [
-        "=== KENSARAI BRAND CONTEXT (authoritative — use only these facts) ===",
-        company_block,
-        sitelinks_block,
-        what_block,
-        creds_block,
-        modules_block,
-        features_block,
-        diff_block,
-        pricing_block,
-        comp_block,
-    ]
-    if stats_block:
-        sections.append(stats_block)
-    sections.append(rules_block)
-    if session_block:
-        sections.append(session_block)
-    sections.append("=== END KENSARAI BRAND CONTEXT ===")
-
-    result = "\n".join(sections)
-
-    log.debug(
-        "context_built",
-        keyword=keyword,
-        has_news_angle=bool(news_angle),
-        has_stats=bool(stats_block),
-        char_count=len(result),
-    )
-
-    return result
+    """Legacy wrapper for backward compatibility. 
+    Use assemble_keyword_brief going forward."""
+    brief = assemble_keyword_brief(keyword=keyword, news_angle=news_angle)
+    return brief.model_dump_json(indent=2)

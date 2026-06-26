@@ -43,7 +43,8 @@ async def test_check_knowledge_panel(mock_queue):
     assert args[1] == "Verified"
 
 @patch("src.geo.entity_monitor.job_queue")
-async def test_monitor_brand_mentions(mock_queue):
+@patch("src.geo.entity_monitor.monitor_linkedin_metrics", new_callable=AsyncMock)
+async def test_monitor_brand_mentions(mock_linkedin, mock_queue):
     mock_data = {
         "organic": [
             {"link": "https://otherblog.com/top-dpdpa-tools", "snippet": "KensaraAI is great."}

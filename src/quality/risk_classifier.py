@@ -81,7 +81,7 @@ PRODUCT_MENTION_TERMS = [
     "kensarai platform",
     "our platform",
     "our agents",
-    "request-demo",
+    "book-demo",
     "book a demo",
 ]
 

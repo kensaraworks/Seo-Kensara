@@ -17,6 +17,7 @@ router = APIRouter(prefix="/queue", tags=["queue"])
 templates = Jinja2Templates(directory="src/ui/templates")
 
 from src.config import settings
+from src.engines.content_calendar import sort_pending_review_items
 DRAFTS_ROOT = Path(settings.content_output_dir)
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
@@ -102,6 +103,10 @@ def _collect_all_items(status_filter: list[str] | None = None) -> list[dict]:
                     "date": fm.get("date", ""),
                     "primary_keyword": fm.get("primary_keyword", ""),
                     "post_type": fm.get("post_type", ""),
+                    "content_type": fm.get("content_type", fm.get("post_type", "")),
+                    "tier": fm.get("tier", 0),
+                    "rank_position": fm.get("rank_position", ""),
+                    "zero_coverage": fm.get("zero_coverage", False),
                     "word_count": fm.get("word_count", 0),
                     "model": fm.get("model", ""),
                     "meta_description": fm.get("meta_description", ""),
@@ -109,7 +114,7 @@ def _collect_all_items(status_filter: list[str] | None = None) -> list[dict]:
                     "body": _FRONTMATTER_RE.sub("", text).strip(),
                 }
             )
-    return items
+    return sort_pending_review_items(items)
 
 
 def _append_activity(action: str, title: str, content_type: str) -> None:
@@ -168,8 +173,28 @@ async def approve_item(folder: str, filename: str) -> JSONResponse:
         text = _replace_frontmatter_field(text, "status", "approved")
         text = _replace_frontmatter_field(text, "approved_at", datetime.now().strftime("%Y-%m-%d %H:%M"))
         path.write_text(text, encoding="utf-8")
-        fm = _parse_frontmatter(text)
-        _append_activity("approved", fm.get("title", filename), folder)
+        updated_frontmatter = _parse_frontmatter(text)
+
+        # Ping Google Indexing API if a canonical URL is available.
+        wp_post_url = updated_frontmatter.get("wp_post_url") or updated_frontmatter.get("canonical_url")
+        if isinstance(wp_post_url, str) and wp_post_url.startswith("https://"):
+            try:
+                from src.analytics.indexing_ping import ping_indexing_api
+
+                ping_result = ping_indexing_api(wp_post_url)
+                if ping_result.get("success"):
+                    log.info("indexing_ping_sent", url=wp_post_url)
+                else:
+                    log.info(
+                        "indexing_ping_skipped_or_failed",
+                        url=wp_post_url,
+                        error=ping_result.get("error"),
+                        note="post approval unaffected",
+                    )
+            except Exception as exc:
+                log.warning("indexing_ping_exception_non_blocking", error=str(exc))
+
+        _append_activity("approved", updated_frontmatter.get("title", filename), folder)
         log.info("content_approved", path=str(path))
         return JSONResponse({"ok": True, "status": "approved"})
     except OSError as exc:

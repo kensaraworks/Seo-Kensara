@@ -81,14 +81,25 @@ KensaraAI deploys 12 specialised compliance agents inside a client's environment
 
 ## DPDPA Resources Published by KensaraAI
 
-- **Enforcement Tracker:** https://kensara.in/dpdpa-enforcement-tracker — database of Indian data privacy enforcement actions
-- **DPDPA Compliance Guide:** https://kensara.in/dpdpa-compliance-guide — comprehensive guide to the Act
-- **DPDPA Checklist:** https://kensara.in/dpdpa-compliance-checklist — 27-step compliance checklist
-- **DSAR Automation Guide:** https://kensara.in/dsar-automation-india — how to automate DSAR fulfilment
-- **Data Breach Guide:** https://kensara.in/data-breach-notification-india — breach notification workflow
-- **DPDPA vs GDPR Comparison:** https://kensara.in/dpdpa-vs-gdpr-comparison — side-by-side comparison
-- **Consent Management Guide:** https://kensara.in/consent-management-platform-india
-- **Request Demo:** https://kensara.in/request-demo
+- **Enforcement Tracker:** https://www.kensara.in/dpdpa — database of Indian data privacy enforcement actions
+- **DPDPA Compliance Guide:** https://www.kensara.in/dpdpa — comprehensive guide to the Act
+- **DPDPA Checklist:** https://www.kensara.in/dpdpa — 27-step compliance checklist
+- **DSAR Automation Guide:** https://www.kensara.in/expertise — how to automate DSAR fulfilment
+- **Data Breach Guide:** https://www.kensara.in/expertise — breach notification workflow
+- **DPDPA vs GDPR Comparison:** https://www.kensara.in/expertise — side-by-side comparison
+- **Consent Management Guide:** https://www.kensara.in/expertise
+- **Request Demo:** https://www.kensara.in/book-demo
+
+---
+
+## Technical Architecture
+
+The core of the SEO Agent is an orchestrated flow across specialized components:
+- **Search Scout (`src/scrapers/rss_scraper.py`):** polls RSS feeds (RBI, MeitY, EDPB, ET Tech) for data protection developments.
+- **Content Gap Analyzer (`src/agents/content_gap_analyzer.py`):** compares competitor pages with Kensara's knowledge base.
+- **Model Router (`src/engines/model_router.py`):** uses AllToken API (GPT, Gemini, Claude) or local engines for cost-optimized reasoning.
+- **Enforcement Tracker (`src/agents/enforcement_tracker.py`):** ingests court orders/regulatory notices into the local vector DB.
+- **Internal Linker (`src/engines/internal_linker.py`):** builds target internal link structures using `cta_library.py`.
 
 ---
 
@@ -139,8 +150,8 @@ KensaraAI deploys 12 specialised compliance agents inside a client's environment
 ## Contact and Commercial
 
 - **Website:** https://kensara.in
-- **Request demo:** https://kensara.in/request-demo
-- **LinkedIn:** https://www.linkedin.com/company/kensarai
+- **Request demo:** https://www.kensara.in/book-demo
+- **LinkedIn:** https://www.linkedin.com/company/kensara-ai
 - **Founders:** Rudraksh Tatwal (CEO), Prince Raj (COO)
 - **Incorporated:** India
 

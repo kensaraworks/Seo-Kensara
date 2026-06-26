@@ -13,6 +13,7 @@ The singleton `job_queue` at module level is the recommended entry point.
 """
 import asyncio
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
 from enum import Enum
@@ -89,11 +90,30 @@ CREATE TABLE IF NOT EXISTS content_queue (
     cluster_id       TEXT,
     priority_score   REAL DEFAULT 0.0,
     paa_questions    TEXT,
+    tier             INTEGER DEFAULT 2,
+    content_type     TEXT DEFAULT 'tier2',
+    source           TEXT DEFAULT 'cluster_gap',
+    scheduled_for    TEXT,
+    rank_position    INTEGER,
+    zero_coverage    INTEGER DEFAULT 0,
+    reason           TEXT DEFAULT '',
     status           TEXT DEFAULT 'queued',
     queued_at        TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_cq_status ON content_queue(status);
+
+CREATE TABLE IF NOT EXISTS content_calendar_alerts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_type  TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    payload     TEXT DEFAULT '{}',
+    status      TEXT DEFAULT 'open',
+    created_at  TEXT NOT NULL,
+    resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_cca_status ON content_calendar_alerts(status);
 
 CREATE TABLE IF NOT EXISTS ai_visibility (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,6 +203,56 @@ CREATE TABLE IF NOT EXISTS seasonal_calendar (
     triggered_at    TEXT
 );
 
+CREATE TABLE IF NOT EXISTS competitor_intel (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    competitor_domain TEXT NOT NULL,
+    url               TEXT NOT NULL UNIQUE,
+    title             TEXT,
+    summary           TEXT,
+    published_date    TEXT,
+    primary_keyword   TEXT,
+    word_count        INTEGER,
+    crawl_date        TEXT NOT NULL,
+    gap_flag          INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_competitor_intel_domain ON competitor_intel(competitor_domain);
+CREATE INDEX IF NOT EXISTS idx_competitor_intel_crawl_date ON competitor_intel(crawl_date);
+
+CREATE TABLE IF NOT EXISTS competitor_gaps (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic             TEXT NOT NULL UNIQUE,
+    competitor_count  INTEGER DEFAULT 0,
+    first_seen        TEXT NOT NULL,
+    kensara_coverage  TEXT DEFAULT 'none',
+    priority_score    REAL DEFAULT 0.0,
+    status            TEXT DEFAULT 'open'
+);
+
+CREATE INDEX IF NOT EXISTS idx_competitor_gaps_priority ON competitor_gaps(priority_score);
+
+CREATE TABLE IF NOT EXISTS competitor_rankings (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    keyword           TEXT NOT NULL,
+    competitor_domain TEXT NOT NULL,
+    position          INTEGER NOT NULL,
+    date_checked      TEXT NOT NULL,
+    week_change       INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_competitor_rankings_lookup
+    ON competitor_rankings(keyword, competitor_domain, date_checked);
+
+CREATE TABLE IF NOT EXISTS competitor_backlink_log (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    competitor_domain TEXT NOT NULL,
+    mention_count     INTEGER NOT NULL,
+    date_checked      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_competitor_backlink_log_lookup
+    ON competitor_backlink_log(competitor_domain, date_checked);
+
 """
 
 _MAX_RETRIES = 3
@@ -224,10 +294,47 @@ class JobQueue:
         try:
             with self._connect() as conn:
                 conn.executescript(_SCHEMA)
+                self._migrate_content_calendar_schema(conn)
+                self._migrate_competitor_intel_schema(conn)
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_cq_scheduled_for ON content_queue(scheduled_for)"
+                )
             log.debug("job_queue_db_ready", path=str(self.db_path))
         except sqlite3.Error as exc:
             log.error("job_queue_init_failed", path=str(self.db_path), error=str(exc))
             raise
+
+    def _migrate_content_calendar_schema(self, conn: sqlite3.Connection) -> None:
+        """Add Module 2.10 columns for existing SQLite databases."""
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(content_queue)").fetchall()
+        }
+        additions = {
+            "tier": "ALTER TABLE content_queue ADD COLUMN tier INTEGER DEFAULT 2",
+            "content_type": "ALTER TABLE content_queue ADD COLUMN content_type TEXT DEFAULT 'tier2'",
+            "source": "ALTER TABLE content_queue ADD COLUMN source TEXT DEFAULT 'cluster_gap'",
+            "scheduled_for": "ALTER TABLE content_queue ADD COLUMN scheduled_for TEXT",
+            "rank_position": "ALTER TABLE content_queue ADD COLUMN rank_position INTEGER",
+            "zero_coverage": "ALTER TABLE content_queue ADD COLUMN zero_coverage INTEGER DEFAULT 0",
+            "reason": "ALTER TABLE content_queue ADD COLUMN reason TEXT DEFAULT ''",
+        }
+        for column, statement in additions.items():
+            if column not in columns:
+                conn.execute(statement)
+
+    def _migrate_competitor_intel_schema(self, conn: sqlite3.Connection) -> None:
+        """Add newer competitor intelligence columns/tables to existing databases."""
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(competitor_intel)").fetchall()
+        }
+        additions = {
+            "summary": "ALTER TABLE competitor_intel ADD COLUMN summary TEXT",
+        }
+        for column, statement in additions.items():
+            if column not in columns:
+                conn.execute(statement)
 
     # ------------------------------------------------------------------ #
     #  Public API                                                           #
@@ -327,6 +434,217 @@ class JobQueue:
             log.info("linkedin_metric_recorded", entity=entity)
         except sqlite3.Error as exc:
             log.error("linkedin_metric_record_failed", entity=entity, error=str(exc))
+            raise
+
+    # ------------------------------------------------------------------ #
+    #  Competitor Intelligence Methods                                   #
+    # ------------------------------------------------------------------ #
+
+    def record_competitor_intel(
+        self,
+        domain: str,
+        url: str,
+        title: str,
+        pub_date: str,
+        keyword: str,
+        word_count: int,
+        summary: str = "",
+        gap_flag: bool = False,
+    ) -> None:
+        """Upsert one competitor content record captured during crawl."""
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO competitor_intel
+                    (competitor_domain, url, title, summary, published_date, primary_keyword,
+                     word_count, crawl_date, gap_flag)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(url) DO UPDATE SET
+                        competitor_domain=excluded.competitor_domain,
+                        title=excluded.title,
+                        summary=excluded.summary,
+                        published_date=excluded.published_date,
+                        primary_keyword=excluded.primary_keyword,
+                        word_count=excluded.word_count,
+                        crawl_date=excluded.crawl_date,
+                        gap_flag=excluded.gap_flag
+                    """,
+                    (
+                        domain,
+                        url,
+                        title,
+                        summary,
+                        pub_date,
+                        keyword,
+                        word_count,
+                        self._now(),
+                        int(gap_flag),
+                    ),
+                )
+            log.debug("competitor_intel_recorded", domain=domain, url=url)
+        except sqlite3.Error as exc:
+            log.error("competitor_intel_record_failed", domain=domain, url=url, error=str(exc))
+            raise
+
+    def get_recent_competitor_intel(self, days: int = 14) -> list[dict[str, Any]]:
+        """Return competitor intel rows crawled in the last N days."""
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM competitor_intel
+                    WHERE crawl_date >= datetime('now', ?)
+                    ORDER BY crawl_date DESC
+                    """,
+                    (f"-{max(1, days)} days",),
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            log.error("competitor_intel_recent_fetch_failed", error=str(exc))
+            return []
+
+    def upsert_competitor_gap(
+        self,
+        topic: str,
+        competitor_count: int,
+        kensara_coverage: str,
+        priority_score: float,
+    ) -> None:
+        """Persist one competitor gap topic with latest priority values."""
+        now = self._now()
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO competitor_gaps
+                    (topic, competitor_count, first_seen, kensara_coverage, priority_score, status)
+                    VALUES (?, ?, ?, ?, ?, 'open')
+                    ON CONFLICT(topic) DO UPDATE SET
+                        competitor_count=excluded.competitor_count,
+                        kensara_coverage=excluded.kensara_coverage,
+                        priority_score=excluded.priority_score,
+                        status='open'
+                    """,
+                    (topic, competitor_count, now, kensara_coverage, priority_score),
+                )
+        except sqlite3.Error as exc:
+            log.error("competitor_gap_upsert_failed", topic=topic, error=str(exc))
+            raise
+
+    def get_top_competitor_gaps(self, limit: int = 3) -> list[dict[str, Any]]:
+        """Return highest priority open competitor gaps."""
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM competitor_gaps
+                    WHERE status = 'open'
+                    ORDER BY priority_score DESC, id ASC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [dict(r) for r in rows]
+        except sqlite3.Error as exc:
+            log.error("competitor_gap_top_fetch_failed", error=str(exc))
+            return []
+
+    def record_competitor_ranking(
+        self,
+        keyword: str,
+        competitor_domain: str,
+        position: int,
+    ) -> int:
+        """Record competitor rank and return position change.
+
+        Positive change means competitor improved (moved up).
+
+        Baseline preference:
+        1) Most recent row at or before 7 days ago (week-over-week)
+        2) If unavailable, most recent prior row (run-over-run)
+        """
+        now = self._now()
+        week_change = 0
+        try:
+            with self._connect() as conn:
+                previous = conn.execute(
+                    """
+                    SELECT position
+                    FROM competitor_rankings
+                    WHERE keyword=? AND competitor_domain=? AND date_checked <= datetime('now', '-7 days')
+                    ORDER BY date_checked DESC
+                    LIMIT 1
+                    """,
+                    (keyword, competitor_domain),
+                ).fetchone()
+                if not previous:
+                    previous = conn.execute(
+                        """
+                        SELECT position
+                        FROM competitor_rankings
+                        WHERE keyword=? AND competitor_domain=?
+                        ORDER BY date_checked DESC
+                        LIMIT 1
+                        """,
+                        (keyword, competitor_domain),
+                    ).fetchone()
+                if previous and previous["position"]:
+                    week_change = int(previous["position"]) - int(position)
+
+                conn.execute(
+                    """
+                    INSERT INTO competitor_rankings
+                    (keyword, competitor_domain, position, date_checked, week_change)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (keyword, competitor_domain, int(position), now, int(week_change)),
+                )
+            return int(week_change)
+        except sqlite3.Error as exc:
+            log.error(
+                "competitor_ranking_record_failed",
+                keyword=keyword,
+                competitor_domain=competitor_domain,
+                error=str(exc),
+            )
+            return 0
+
+    def get_previous_backlink_count(self, competitor_domain: str, days_ago: int = 7) -> int:
+        """Return most recent backlink mention count at or before N days ago."""
+        try:
+            with self._connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT mention_count
+                    FROM competitor_backlink_log
+                    WHERE competitor_domain=? AND date_checked <= datetime('now', ?)
+                    ORDER BY date_checked DESC
+                    LIMIT 1
+                    """,
+                    (competitor_domain, f"-{max(1, days_ago)} days"),
+                ).fetchone()
+                return int(row["mention_count"]) if row else 0
+        except sqlite3.Error as exc:
+            log.error("competitor_backlink_previous_fetch_failed", domain=competitor_domain, error=str(exc))
+            return 0
+
+    def record_competitor_backlink_count(self, competitor_domain: str, mention_count: int) -> None:
+        """Persist weekly backlink mention proxy count for a competitor domain."""
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO competitor_backlink_log
+                    (competitor_domain, mention_count, date_checked)
+                    VALUES (?, ?, ?)
+                    """,
+                    (competitor_domain, int(mention_count), self._now()),
+                )
+        except sqlite3.Error as exc:
+            log.error("competitor_backlink_record_failed", domain=competitor_domain, error=str(exc))
             raise
 
     def is_story_processed(self, story_id: str) -> bool:
@@ -519,12 +837,13 @@ class JobQueue:
                 conn.execute(
                     """
                     INSERT INTO keyword_clusters
-                    (cluster_id, cluster_name, keyword, intent_type, last_updated)
-                    VALUES (?, ?, ?, ?, ?)
+                    (cluster_id, cluster_name, keyword, intent_type, difficulty_score, last_updated)
+                    VALUES (?, ?, ?, ?, 'unknown', ?)
                     ON CONFLICT(keyword) DO UPDATE SET
                     cluster_id=excluded.cluster_id,
                     cluster_name=excluded.cluster_name,
                     intent_type=excluded.intent_type,
+                    difficulty_score='unknown',
                     last_updated=excluded.last_updated
                     """,
                     (cluster_id, cluster_name, keyword, intent_type, now),
@@ -599,8 +918,23 @@ class JobQueue:
             log.error("db_get_underserved_keywords_failed", cluster_id=cluster_id, error=str(exc))
             return []
 
-    def enqueue_content(self, keyword: str, intent_type: str, cluster_id: str, priority_score: float, paa_questions: list[str]) -> None:
-        """Enqueue a keyword for blog generation."""
+    def enqueue_content(
+        self,
+        keyword: str,
+        intent_type: str,
+        cluster_id: str,
+        priority_score: float,
+        paa_questions: list[str],
+        *,
+        tier: int = 2,
+        content_type: str = "tier2",
+        source: str = "cluster_gap",
+        scheduled_for: str | None = None,
+        rank_position: int | None = None,
+        zero_coverage: bool = False,
+        reason: str = "",
+    ) -> None:
+        """Enqueue a keyword for generation, carrying Module 2.10 metadata."""
         now = self._now()
         paa_json = json.dumps(paa_questions)
         try:
@@ -608,28 +942,63 @@ class JobQueue:
                 conn.execute(
                     """
                     INSERT INTO content_queue
-                    (keyword, intent_type, cluster_id, priority_score, paa_questions, status, queued_at)
-                    VALUES (?, ?, ?, ?, ?, 'queued', ?)
+                    (keyword, intent_type, cluster_id, priority_score, paa_questions,
+                     tier, content_type, source, scheduled_for, rank_position,
+                     zero_coverage, reason, status, queued_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
                     ON CONFLICT(keyword) DO UPDATE SET
                     priority_score=excluded.priority_score,
                     paa_questions=excluded.paa_questions,
+                    tier=excluded.tier,
+                    content_type=excluded.content_type,
+                    source=excluded.source,
+                    scheduled_for=excluded.scheduled_for,
+                    rank_position=excluded.rank_position,
+                    zero_coverage=excluded.zero_coverage,
+                    reason=excluded.reason,
                     status='queued',
                     queued_at=excluded.queued_at
                     """,
-                    (keyword, intent_type, cluster_id, priority_score, paa_json, now),
+                    (
+                        keyword,
+                        intent_type,
+                        cluster_id,
+                        priority_score,
+                        paa_json,
+                        tier,
+                        content_type,
+                        source,
+                        scheduled_for,
+                        rank_position,
+                        int(zero_coverage),
+                        reason,
+                        now,
+                    ),
                 )
         except sqlite3.Error as exc:
             log.error("db_enqueue_content_failed", keyword=keyword, error=str(exc))
 
     def pop_content_queue(self) -> dict[str, Any] | None:
-        """Pop the highest priority keyword from the content queue."""
+        """Pop the highest priority due keyword from the content queue."""
         try:
             with self._connect() as conn:
                 row = conn.execute(
                     """
                     SELECT * FROM content_queue 
-                    WHERE status = 'queued' 
-                    ORDER BY priority_score DESC, id ASC 
+                    WHERE status = 'queued'
+                      AND (scheduled_for IS NULL OR scheduled_for <= date('now'))
+                    ORDER BY
+                        CASE
+                            WHEN content_type IN ('tier3', 'newsjack', 'tier3_newsjack') THEN 1
+                            WHEN rank_position BETWEEN 8 AND 20 THEN 2
+                            WHEN zero_coverage = 1 THEN 3
+                            WHEN content_type LIKE '%pillar%' THEN 4
+                            WHEN content_type IN ('tier2', 'supporting_cluster') THEN 5
+                            WHEN content_type LIKE '%refresh%' THEN 6
+                            ELSE 7
+                        END ASC,
+                        priority_score DESC,
+                        id ASC
                     LIMIT 1
                     """
                 ).fetchone()
@@ -660,6 +1029,119 @@ class JobQueue:
                 )
         except sqlite3.Error as exc:
             log.error("db_mark_content_completed_failed", keyword=keyword, error=str(exc))
+
+    def update_link_map(self, post_id: str, updated_content: str) -> None:
+        """Refresh outgoing link counts for an updated post.
+
+        `post_id` may be either the internal link-map id or the post URL. The
+        refreshed count is derived from Markdown links in the updated content.
+        """
+        from src.engines.internal_linker import get_connection
+
+        links = set(re_match.group(1) for re_match in re.finditer(r"\]\((https?://[^)]+)\)", updated_content))
+        try:
+            with get_connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT post_id, post_url
+                    FROM internal_link_map
+                    WHERE post_id = ? OR post_url = ?
+                    LIMIT 1
+                    """,
+                    (post_id, post_id),
+                ).fetchone()
+                if not row:
+                    return
+
+                conn.execute(
+                    """
+                    UPDATE internal_link_map
+                    SET outgoing_link_count = ?, date_updated = ?
+                    WHERE post_id = ?
+                    """,
+                    (len(links), self._now(), row["post_id"]),
+                )
+            log.info("link_map_refreshed", post_id=post_id, outgoing_links=len(links))
+        except sqlite3.Error as exc:
+            log.error("link_map_refresh_failed", post_id=post_id, error=str(exc))
+
+    def count_content_queue(self, statuses: tuple[str, ...] = ("queued", "processing")) -> int:
+        """Count generation queue items in the provided statuses."""
+        placeholders = ",".join("?" for _ in statuses)
+        try:
+            with self._connect() as conn:
+                row = conn.execute(
+                    f"SELECT COUNT(*) AS cnt FROM content_queue WHERE status IN ({placeholders})",
+                    statuses,
+                ).fetchone()
+                return int(row["cnt"] if row else 0)
+        except sqlite3.Error as exc:
+            log.error("db_count_content_queue_failed", error=str(exc))
+            return 0
+
+    def get_content_queue_items(self, statuses: tuple[str, ...] = ("queued", "processing")) -> list[dict[str, Any]]:
+        """Return generation queue rows ordered by Module 2.10 priority."""
+        placeholders = ",".join("?" for _ in statuses)
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT * FROM content_queue
+                    WHERE status IN ({placeholders})
+                    ORDER BY
+                        CASE
+                            WHEN content_type IN ('tier3', 'newsjack', 'tier3_newsjack') THEN 1
+                            WHEN rank_position BETWEEN 8 AND 20 THEN 2
+                            WHEN zero_coverage = 1 THEN 3
+                            WHEN content_type LIKE '%pillar%' THEN 4
+                            WHEN content_type IN ('tier2', 'supporting_cluster') THEN 5
+                            WHEN content_type LIKE '%refresh%' THEN 6
+                            ELSE 7
+                        END ASC,
+                        priority_score DESC,
+                        id ASC
+                    """,
+                    statuses,
+                ).fetchall()
+                return [_row_to_dict(row) for row in rows]
+        except sqlite3.Error as exc:
+            log.error("db_get_content_queue_items_failed", error=str(exc))
+            return []
+
+    def record_content_calendar_alert(self, alert_type: str, message: str, payload: dict[str, Any] | None = None) -> None:
+        """Persist a Module 2.10 CEO alert for dashboard/API display."""
+        payload = payload or {}
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO content_calendar_alerts
+                    (alert_type, message, payload, status, created_at)
+                    VALUES (?, ?, ?, 'open', ?)
+                    """,
+                    (alert_type, message, json.dumps(payload), self._now()),
+                )
+            log.warning("content_calendar_alert_recorded", alert_type=alert_type, message=message)
+        except sqlite3.Error as exc:
+            log.error("db_record_content_calendar_alert_failed", alert_type=alert_type, error=str(exc))
+
+    def get_open_content_calendar_alerts(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Return open Module 2.10 alerts, newest first."""
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM content_calendar_alerts
+                    WHERE status = 'open'
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+                return [_row_to_dict(row) for row in rows]
+        except sqlite3.Error as exc:
+            log.error("db_get_content_calendar_alerts_failed", error=str(exc))
+            return []
 
     # ------------------------------------------------------------------ #
     #  Module-level helpers (class utility methods)                       #
@@ -965,7 +1447,7 @@ job_queue = JobQueue()
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     """Convert a sqlite3.Row to a plain dict, deserialising JSON columns."""
     d = dict(row)
-    for col in ("payload", "result"):
+    for col in ("payload", "result", "paa_questions"):
         if d.get(col):
             try:
                 d[col] = json.loads(d[col])

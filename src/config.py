@@ -1,15 +1,15 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
 import structlog
+from dotenv import load_dotenv
+
+load_dotenv()
 
 log = structlog.get_logger()
 
 
+
 class Settings(BaseSettings):
-    # Azure OpenAI — used for news scoring only (complex JSON)
-    azure_openai_endpoint: str = Field("", env="AZURE_OPENAI_ENDPOINT")
-    azure_openai_key: str = Field("", env="AZURE_OPENAI_KEY")
-    azure_openai_deployment: str = Field("gpt-4o", env="AZURE_OPENAI_DEPLOYMENT")
 
     # Groq — primary content generation (blogs, LinkedIn, newsletter) — FREE
     groq_api_key: str = Field("", env="GROQ_API_KEY")
@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Perplexity API — AI citation monitoring
     perplexity_api_key: str = Field("", env="PERPLEXITY_API_KEY")
 
+    # Gemini API key (direct integration for Gemini GEO citation monitoring)
+    gemini_api_key: str = Field("", env="GEMINI_API_KEY")
+
+    # AllToken API — for GPT, Claude GEO monitoring
+    alltoken_api_key: str = Field("", env="ALLTOKEN_API_KEY")
+    alltoken_base_url: str = Field("https://api.openai.com/v1", env="ALLTOKEN_BASE_URL")
+
     # WordPress — kensara.in
     wordpress_url: str = Field("https://kensara.in", env="WORDPRESS_URL")
     wordpress_user: str = Field("", env="WORDPRESS_USER")
@@ -51,6 +58,11 @@ class Settings(BaseSettings):
     content_output_dir: str = Field("drafts", env="CONTENT_OUTPUT_DIR")
     blog_cadence: str = Field("daily", env="BLOG_CADENCE")  # daily | weekly
     integration_test: bool = Field(False, env="INTEGRATION_TEST")
+
+    # News recency — RSS entries older than this many days are dropped before
+    # entering the pipeline. Scored items also receive a recency penalty.
+    # Override with NEWS_MAX_AGE_DAYS=180 for broader regulatory coverage.
+    news_max_age_days: int = Field(90, env="NEWS_MAX_AGE_DAYS")
 
     class Config:
         env_file = ".env"

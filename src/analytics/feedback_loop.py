@@ -259,29 +259,65 @@ async def evaluate_content_performance() -> dict[str, int]:
     Called monthly on the 1st of the month at 04:00 IST.
     Returns summary counts of classification outcomes.
     """
+    from src.analytics.search_console import gsc_client
+
     log.info("evaluate_content_performance_start")
+
+    if not gsc_client.is_configured():
+        log.warning(
+            "gsc_not_connected_skipping_performance_classification",
+            detail=(
+                "Posts remain pending until GSC is configured. "
+                "See Part 1 of the GSC implementation plan."
+            ),
+        )
+        return {"winner": 0, "dead": 0, "link_earner": 0, "pending": 0}
+
     pending = job_queue.get_pending_performance_reviews()
 
     if not pending:
         log.info("evaluate_content_performance_no_pending")
-        return {"winner": 0, "dead": 0, "link_earner": 0, "active": 0}
+        return {"winner": 0, "dead": 0, "link_earner": 0, "pending": 0}
 
-    counts: dict[str, int] = {"winner": 0, "dead": 0, "link_earner": 0, "active": 0}
+    counts: dict[str, int] = {"winner": 0, "dead": 0, "link_earner": 0, "pending": 0}
 
     for entry in pending:
         keyword = entry.get("keyword", "")
         if not keyword:
             continue
 
-        # Fetch GSC metrics
+        post_url = (entry.get("post_url") or "").strip()
+
+        # Keep keyword-level metrics for click/ranking context and fallback.
         gsc = await _get_gsc_metrics(keyword)
-        # Check backlinks
+        # Check backlinks (existing behavior).
         backlinks = await _check_backlinks_via_serper(keyword)
 
-        impressions = gsc["impressions_30d"]
-        ranked = gsc["ranked_keywords"]
+        impressions = gsc_client.get_page_impressions_30d(post_url) if post_url else 0
+        if impressions == 0 and not post_url:
+            # Backward-compatible fallback while legacy rows are still keyword-only.
+            impressions = gsc.get("impressions_30d", 0)
 
-        tag = _classify_performance(impressions, ranked, backlinks)
+        clicks = gsc.get("clicks_30d", 0)
+        ranked = gsc.get("ranked_keywords", 0)
+
+        recorded_at = str(entry.get("recorded_at", "") or "")
+        try:
+            published_date = date.fromisoformat(recorded_at.split("T")[0])
+            days_since_publish = (date.today() - published_date).days
+        except Exception:
+            days_since_publish = 0
+
+        # Part 7 classification thresholds.
+        if impressions == 0 and days_since_publish > 30:
+            tag = "dead"
+        elif impressions >= 100:
+            tag = "winner"
+        elif impressions >= 50:
+            tag = "link_earner"
+        else:
+            tag = "pending"
+
         counts[tag] = counts.get(tag, 0) + 1
 
         # Update the record
@@ -292,7 +328,7 @@ async def evaluate_content_performance() -> dict[str, int]:
             word_count=entry.get("word_count", 0),
             h2_structure=json.loads(entry.get("h2_structure", "[]") or "[]"),
             impressions_30d=impressions,
-            clicks_30d=gsc["clicks_30d"],
+            clicks_30d=clicks,
             ranked_keywords=ranked,
             backlinks_found=backlinks,
             performance_tag=tag,
@@ -302,6 +338,23 @@ async def evaluate_content_performance() -> dict[str, int]:
         if tag == "dead":
             job_queue.update_keyword_coverage(keyword, "non_viable")
             log.info("keyword_flagged_non_viable", keyword=keyword[:50])
+            if post_url:
+                try:
+                    from src.agents.content_refresher import enqueue_refresh
+
+                    enqueue_refresh(
+                        post_url=post_url,
+                        trigger_reason="dead_post_zero_impressions_30d",
+                        priority=2,
+                    )
+                    log.info("auto_enqueued_refresh_for_dead_post", post_url=post_url)
+                except Exception as exc:
+                    log.warning("auto_enqueue_refresh_failed", post_url=post_url, error=str(exc))
+            else:
+                log.warning(
+                    "dead_post_missing_url_refresh_skipped",
+                    keyword=keyword[:50],
+                )
 
         # Action on winners — also ensure cluster coverage is marked
         if tag in ("winner", "link_earner"):

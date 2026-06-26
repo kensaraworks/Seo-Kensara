@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Search Performance · KensaraAI Content Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+    <div>
+      <div class="page-title">Search Performance</div>
+      <div class="page-sub">GSC Widgets · Refresh Queue · Feed Health · {{ now }}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="pulse-dot {{ 'green' if gsc_configured else 'amber' }}"></span>
+      <span style="font-size:12px;color:#6b7280;">
+        GSC {{ 'connected' if gsc_configured else 'not configured' }}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="page-content" style="display:flex;flex-direction:column;gap:24px;">
+
+  {% if not gsc_configured %}
+  <div class="alert-info" style="display:flex;align-items:center;gap:14px;">
+    <svg width="18" height="18" fill="none" stroke="#a5b4fc" viewBox="0 0 24 24" stroke-width="2" style="flex-shrink:0;">
+      <circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 8v4m0 4h.01"/>
+    </svg>
+    <div style="flex:1;">
+      <div style="font-size:13px;font-weight:600;color:#4f46e5;">Google Search Console not connected</div>
+      <div style="font-size:12px;color:#64748b;margin-top:2px;">Complete GSC setup to unlock search performance widgets. Weekly sync runs every Sunday.</div>
+    </div>
+    <a href="/context/" class="btn btn-ghost btn-sm" style="flex-shrink:0;">Open Setup →</a>
+  </div>
+  {% endif %}
+
+  {# ----------------------------------------------------------------------
+     GSC WIDGETS
+  ---------------------------------------------------------------------- #}
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    {# Widget 1 · Meta description opportunities #}
+    <div class="card">
+      <div style="margin-bottom:10px;">
+        <div class="section-title" style="margin:0;">Meta Description Opportunities</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;">High impressions, low CTR · rewrite the meta description for these posts.</div>
+      </div>
+      {% if gsc_widget_1 %}
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead><tr><th>Query</th><th>Page</th><th>Impressions</th><th>CTR</th><th>Position</th><th>Action</th></tr></thead>
+          <tbody>
+            {% for row in gsc_widget_1 %}
+            <tr>
+              <td style="font-size:12px;font-weight:500;">{{ row.query }}</td>
+              <td style="font-size:11px;color:#374151;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.page_url }}</td>
+              <td style="font-size:12px;">{{ row.impressions }}</td>
+              <td style="font-size:12px;color:#b45309;">{{ row.ctr_pct }}%</td>
+              <td style="font-size:12px;">{{ row.position }}</td>
+              <td style="font-size:11px;color:#4b5563;">{{ row.action }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No data yet · GSC sync runs every Sunday at 07:00 IST.</div>
+      {% endif %}
+    </div>
+
+    {# Widget 2 · Content refresh opportunities #}
+    <div class="card">
+      <div style="margin-bottom:10px;">
+        <div class="section-title" style="margin:0;">Content Refresh Opportunities</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;">Posts near page 1 · a targeted refresh can push them into top positions.</div>
+      </div>
+      {% if gsc_widget_2 %}
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead><tr><th>Query</th><th>Page</th><th>Position</th><th>Impressions</th><th>Action</th></tr></thead>
+          <tbody>
+            {% for row in gsc_widget_2 %}
+            <tr>
+              <td style="font-size:12px;font-weight:500;">{{ row.query }}</td>
+              <td style="font-size:11px;color:#374151;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.page_url }}</td>
+              <td style="font-size:12px;color:#b45309;">{{ row.position }}</td>
+              <td style="font-size:12px;">{{ row.impressions }}</td>
+              <td style="font-size:11px;color:#4b5563;">{{ row.action }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No page-1-nearby opportunities yet.</div>
+      {% endif %}
+    </div>
+
+    {# Widget 3 · Indexing issues #}
+    <div class="card">
+      <div style="margin-bottom:10px;">
+        <div class="section-title" style="margin:0;">Indexing Issues</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:4px;">Posts published 30+ days ago with zero Google impressions.</div>
+      </div>
+      {% if gsc_widget_3 %}
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead><tr><th>Post URL</th><th>Published</th><th>Days Old</th><th>Primary Keyword</th></tr></thead>
+          <tbody>
+            {% for row in gsc_widget_3 %}
+            <tr>
+              <td style="font-size:11px;color:#374151;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.post_url }}</td>
+              <td style="font-size:12px;">{{ row.date_published }}</td>
+              <td style="font-size:12px;color:#dc2626;">{{ row.days_old }}</td>
+              <td style="font-size:12px;">{{ row.primary_keyword }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#16a34a;">✓ All published posts have search impressions.</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  {# ----------------------------------------------------------------------
+     REFRESH QUEUE + FEED HEALTH  (2-column)
+  ---------------------------------------------------------------------- #}
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start;">
+
+    {# -- Refresh Queue ----------------------------------------------------- #}
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="section-title" style="margin:0;">Refresh Queue</div>
+        {% if refresh_count > 0 %}
+        <span style="font-size:13px;font-weight:700;color:#b45309;">{{ refresh_count }} pending</span>
+        {% else %}
+        <span style="font-size:11px;color:#94a3b8;">empty</span>
+        {% endif %}
+      </div>
+
+      {% if refresh_items %}
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead><tr><th>Post URL</th><th>Priority</th><th>Trigger</th><th>Queued</th></tr></thead>
+          <tbody>
+            {% for item in refresh_items %}
+            <tr>
+              <td style="font-size:11px;color:#4f46e5;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.post_url }}</td>
+              <td>
+                <span style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(180,83,9,0.08);color:#b45309;">P{{ item.priority }}</span>
+              </td>
+              <td style="font-size:11px;color:#4b5563;">{{ item.trigger_reason }}</td>
+              <td style="font-size:11px;color:#6b7280;">{{ item.queued_date }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#64748b;">Queue drains every Sunday at 08:00 IST.</div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">Refresh queue is empty.</div>
+      {% endif %}
+    </div>
+
+    {# -- Feed Health (source rejection stats) ------------------------------ #}
+    <div class="card">
+      <div class="section-title">Feed Health (30d)</div>
+      {% if source_health %}
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        {% for src in source_health %}
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;background:rgba(0,0,0,0.02);">
+          <span style="font-size:11px;color:#374151;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ src.source }}</span>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px;">
+            <span style="font-size:11px;font-weight:600;color:#dc2626;">{{ src.rejections }}</span>
+            <span style="font-size:10px;color:#64748b;">rejected</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No rejection data in the last 30 days.</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}

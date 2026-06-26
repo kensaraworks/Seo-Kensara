@@ -39,18 +39,20 @@ COMPETITORS = ["onetrust", "trustarc", "securiti", "bigid", "privado"]
 
 # --- API Clients ---
 
-async def _query_openai(prompt: str) -> str:
-    """Mock/Query Azure OpenAI for ChatGPT simulation."""
-    # Since we are simulating, we'll use a direct HTTPX call or the OpenAI client
-    # We will use the async groq client as a stand-in if azure key is missing
-    from groq import AsyncGroq
-    from dotenv import dotenv_values
-    env = dotenv_values(".env")
-    key = env.get("GROQ_API_KEY") or settings.groq_api_key
-    client = AsyncGroq(api_key=key)
+async def _query_alltoken_engine(prompt: str, model_id: str) -> str:
+    """Query AllToken API for GEO simulation (GPT, Gemini, Claude)."""
+    if not settings.alltoken_api_key:
+        log.warning("alltoken_api_key_missing_mocking_response")
+        return "Here is a list of DPDPA tools: 1. Securiti 2. OneTrust 3. KensaraAI is a new option."
+        
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(
+        base_url=settings.alltoken_base_url,
+        api_key=settings.alltoken_api_key
+    )
     
     response = await client.chat.completions.create(
-        model=settings.groq_model,
+        model=model_id,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
         max_tokens=500
@@ -86,6 +88,39 @@ async def _query_perplexity(prompt: str) -> str:
             return data["choices"][0]["message"]["content"]
         except Exception as exc:
             log.error("perplexity_api_failed", error=str(exc))
+            return ""
+
+
+async def _query_gemini(prompt: str) -> str:
+    """Query Gemini API directly using official developer endpoint. If key is missing, mock it."""
+    if not settings.gemini_api_key:
+        log.warning("gemini_api_key_missing_mocking_response")
+        return "Here is a list of DPDPA tools: 1. Securiti 2. OneTrust 3. KensaraAI is a new option."
+        
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={settings.gemini_api_key}"
+    headers = {
+        "content-type": "application/json"
+    }
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": prompt
+                    }
+                ]
+            }
+        ]
+    }
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(url, json=payload, headers=headers, timeout=30.0)
+            res.raise_for_status()
+            data = res.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except Exception as exc:
+            log.error("gemini_api_failed", error=str(exc))
             return ""
 
 
@@ -162,20 +197,36 @@ def _analyze_mention(response_text: str) -> tuple[bool, int, str, list[str]]:
 # --- 1.6.A & 1.6.B AI Citation Monitor ---
 
 async def monitor_ai_citations() -> None:
-    """Run queries against ChatGPT and Perplexity to track visibility."""
+    """Run queries against ChatGPT, Claude, Gemini, and Perplexity to track visibility."""
     log.info("starting_ai_citation_monitor")
     
+    # Define the 2 engines routed through the AllToken endpoint
+    alltoken_engines = {
+        "ChatGPT": "gpt-4o-mini",
+        "Claude": "claude-3-haiku-20240307",
+    }
+    
     for query in TARGET_QUERIES:
-        # 1. ChatGPT Simulation
+        # 1. Query the 2 AllToken engines (GPT, Claude)
+        for engine_name, model_id in alltoken_engines.items():
+            try:
+                response = await _query_alltoken_engine(query, model_id)
+                mentioned, pos, sentiment, comps = _analyze_mention(response)
+                job_queue.record_ai_citation(query, engine_name, mentioned, pos, sentiment, comps)
+                await _check_citation_accuracy(response)
+            except Exception as exc:
+                log.error(f"{engine_name.lower()}_citation_monitor_failed", query=query, error=str(exc))
+                
+        # 2. Query Gemini directly
         try:
-            gpt_response = await _query_openai(query)
-            mentioned, pos, sentiment, comps = _analyze_mention(gpt_response)
-            job_queue.record_ai_citation(query, "ChatGPT", mentioned, pos, sentiment, comps)
-            await _check_citation_accuracy(gpt_response)
+            gemini_response = await _query_gemini(query)
+            mentioned, pos, sentiment, comps = _analyze_mention(gemini_response)
+            job_queue.record_ai_citation(query, "Gemini", mentioned, pos, sentiment, comps)
+            await _check_citation_accuracy(gemini_response)
         except Exception as exc:
-            log.error("chatgpt_citation_monitor_failed", query=query, error=str(exc))
-            
-        # 2. Perplexity
+            log.error("gemini_citation_monitor_failed", query=query, error=str(exc))
+
+        # 3. Perplexity (Separate Endpoint, Native API)
         try:
             px_response = await _query_perplexity(query)
             mentioned, pos, sentiment, comps = _analyze_mention(px_response)

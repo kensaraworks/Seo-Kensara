@@ -1,14 +1,13 @@
 """Keyword Cluster Intelligence Engine.
 
 Manages the 8 primary keyword clusters, calculates coverage scores, assesses
-difficulty via SERP (mocked for now), extracts PAA questions, and populates
-the content generation queue.
+difficulty as unknown for Phase 1, extracts PAA questions, and populates the
+content generation queue.
 """
 
 import asyncio
 from datetime import datetime, date
 import structlog
-import random
 
 from src.queue.job_queue import job_queue
 from src.agents.intent_classifier import classify_intent
@@ -137,28 +136,8 @@ async def initialize_clusters() -> None:
 
 
 # -----------------------------------------------------------------------
-# Mock External APIs (Serper.dev / DataForSEO)
+# Mock External API (Serper.dev)
 # -----------------------------------------------------------------------
-
-async def _mock_check_keyword_difficulty(keyword: str) -> dict:
-    """Mock DataForSEO/Serper.dev difficulty check."""
-    # Simulate API latency
-    await asyncio.sleep(0.5)
-    
-    # Randomly classify as competitive or opportunity for demonstration
-    is_competitive = random.choice([True, False])
-    if is_competitive:
-        return {
-            "status": "COMPETITIVE",
-            "high_da_count": random.randint(8, 10),
-            "reason": "8+ of top 10 results are from high-DA domains"
-        }
-    else:
-        return {
-            "status": "OPPORTUNITY",
-            "low_da_count": random.randint(3, 5),
-            "reason": "3+ of top 10 results are from DA < 40 sites"
-        }
 
 async def _mock_extract_paa_questions(keyword: str) -> list[str]:
     """Mock Serper.dev People Also Ask extraction."""
@@ -250,17 +229,13 @@ async def run_cluster_gap_auto_queue() -> None:
             keyword = kw_data["keyword"]
             intent = kw_data["intent_type"] or (await classify_intent(keyword)).value
             
-            # SERP Analysis (Difficulty & PAA)
-            difficulty = await _mock_check_keyword_difficulty(keyword)
+            # difficulty_score: Phase 2 - Serper DA integration pending.
+            # Phase 1 intentionally avoids synthetic difficulty signals.
             paa_questions = await _mock_extract_paa_questions(keyword)
             
             # Calculate priority
             priority = 100.0 - score  # lower score = higher priority
             priority += _get_deadline_boost(keyword)
-            if difficulty["status"] == "OPPORTUNITY":
-                priority += 20.0
-            elif difficulty["status"] == "COMPETITIVE":
-                priority -= 10.0
             
             # Enqueue
             job_queue.enqueue_content(
@@ -270,7 +245,7 @@ async def run_cluster_gap_auto_queue() -> None:
                 priority_score=priority,
                 paa_questions=paa_questions
             )
-            log.info("keyword_queued", keyword=keyword, priority=priority, difficulty=difficulty["status"])
+            log.info("keyword_queued", keyword=keyword, priority=priority, difficulty="unknown")
             queued_count += 1
             
     log.info("run_cluster_gap_auto_queue_done", queued_keywords=queued_count)

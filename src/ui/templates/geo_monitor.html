@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}GEO Monitor - KensaraAI Content Hub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+    <div>
+      <div class="page-title">GEO Monitor</div>
+      <div class="page-sub">AI visibility across ChatGPT, Claude, Gemini, Perplexity, and Google AIO - {{ now }}</div>
+    </div>
+    <button id="geo-sync-btn" class="btn btn-primary btn-sm" onclick="triggerGeoSync(this)">Sync GEO Monitor</button>
+  </div>
+</div>
+
+<div class="page-content" style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start;">
+
+  <aside class="card" style="position:sticky;top:18px;padding:14px;">
+    <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#64748b;margin-bottom:10px;">Sections</div>
+    <a href="#geo-overview" class="nav-item" style="margin:0 0 4px 0;">Overview</a>
+    <a href="#geo-engines" class="nav-item" style="margin:0 0 4px 0;">Engine Breakdown</a>
+    <a href="#geo-queries" class="nav-item" style="margin:0 0 4px 0;">Top Queries</a>
+    <a href="#geo-comp" class="nav-item" style="margin:0 0 4px 0;">Competitors</a>
+    <a href="#geo-events" class="nav-item" style="margin:0;">Detailed Events</a>
+  </aside>
+
+  <div style="display:flex;flex-direction:column;gap:14px;">
+
+    <section class="card" style="padding:14px;">
+      <form method="get" action="/geo-monitor/" style="display:grid;grid-template-columns:140px 1fr 190px 150px auto;gap:8px;align-items:end;">
+        <div>
+          <label style="display:block;font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Window</label>
+          <select name="days">
+            <option value="7" {% if geo_days == 7 %}selected{% endif %}>Last 7 days</option>
+            <option value="30" {% if geo_days == 30 %}selected{% endif %}>Last 30 days</option>
+            <option value="90" {% if geo_days == 90 %}selected{% endif %}>Last 90 days</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Engine</label>
+          <select name="engine">
+            <option value="all" {% if geo_selected_engine == 'all' %}selected{% endif %}>All engines</option>
+            {% for engine_name in geo_engine_options %}
+            <option value="{{ engine_name }}" {% if geo_selected_engine == engine_name %}selected{% endif %}>{{ engine_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding-bottom:8px;">
+          <input type="checkbox" id="mentioned" name="mentioned" value="1" {% if geo_mentioned_only %}checked{% endif %}>
+          <label for="mentioned" style="font-size:12px;color:#374151;">Kensara mentioned only</label>
+        </div>
+        <button type="submit" class="btn btn-ghost btn-sm">Apply Filters</button>
+        <a href="/geo-monitor/" class="btn btn-ghost btn-sm" style="text-decoration:none;display:inline-flex;justify-content:center;">Reset</a>
+      </form>
+    </section>
+
+    <section id="geo-overview" class="card">
+      <div class="section-title">Overview</div>
+      {% if geo_summary.available %}
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+        <div style="padding:12px;border-radius:9px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.18);">
+          <div style="font-size:22px;font-weight:700;color:#4338ca;">{{ geo_summary.total_checks }}</div>
+          <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em;">checks</div>
+        </div>
+        <div style="padding:12px;border-radius:9px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.18);">
+          <div style="font-size:22px;font-weight:700;color:#16a34a;">{{ geo_summary.mention_rate }}%</div>
+          <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em;">mention rate</div>
+        </div>
+        <div style="padding:12px;border-radius:9px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.18);">
+          <div style="font-size:22px;font-weight:700;color:#b45309;">{{ geo_summary.engines_count }}</div>
+          <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em;">engines</div>
+        </div>
+        <div style="padding:12px;border-radius:9px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.18);">
+          <div style="font-size:22px;font-weight:700;color:#dc2626;">{{ geo_summary.positive_count }}</div>
+          <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.06em;">positive mentions</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:#94a3b8;">Last checked: {{ geo_summary.last_checked }}</div>
+      {% else %}
+      <div class="empty-state" style="padding:28px 18px;">
+        <div class="empty-title">No GEO visibility data yet</div>
+        <div class="empty-sub">Run the weekly GEO monitor job to populate AI visibility checks.</div>
+        <a href="/schedule/" class="btn btn-ghost btn-sm" style="margin-top:12px;">Open Schedule</a>
+      </div>
+      {% endif %}
+    </section>
+
+    <section id="geo-engines" class="card">
+      <div class="section-title">Engine Breakdown</div>
+      {% if geo_summary.engine_breakdown %}
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead>
+            <tr><th>Engine</th><th>Checks</th><th>Mentions</th><th>Mention Rate</th><th>Avg Position</th><th>Last Checked</th></tr>
+          </thead>
+          <tbody>
+            {% for row in geo_summary.engine_breakdown %}
+            <tr>
+              <td style="font-size:12px;font-weight:600;">{{ row.engine }}</td>
+              <td style="font-size:12px;">{{ row.checks }}</td>
+              <td style="font-size:12px;">{{ row.mentions }}</td>
+              <td style="font-size:12px;color:#16a34a;">{{ row.mention_rate }}%</td>
+              <td style="font-size:12px;color:#64748b;">{{ row.avg_position_score if row.avg_position_score is not none else '-' }}</td>
+              <td style="font-size:11px;color:#6b7280;">{{ row.last_checked }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No engine breakdown available.</div>
+      {% endif %}
+    </section>
+
+    <section id="geo-queries" class="card">
+      <div class="section-title">Top Monitored Queries</div>
+      {% if geo_top_queries %}
+      <div style="overflow:auto;">
+        <table class="table">
+          <thead>
+            <tr><th>Query</th><th>Checks</th><th>Mentions</th><th>Mention Rate</th><th>Avg Position</th></tr>
+          </thead>
+          <tbody>
+            {% for q in geo_top_queries %}
+            <tr>
+              <td style="font-size:12px;max-width:520px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ q.query }}</td>
+              <td style="font-size:12px;">{{ q.checks }}</td>
+              <td style="font-size:12px;">{{ q.mentions }}</td>
+              <td style="font-size:12px;color:#16a34a;">{{ q.mention_rate }}%</td>
+              <td style="font-size:12px;color:#64748b;">{{ q.avg_position_score if q.avg_position_score is not none else '-' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No query stats available.</div>
+      {% endif %}
+    </section>
+
+    <section id="geo-comp" class="card">
+      <div class="section-title">Most Mentioned Competitors</div>
+      {% if geo_top_competitors %}
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        {% for comp in geo_top_competitors %}
+        <div style="padding:5px 10px;border-radius:20px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);font-size:11px;color:#fca5a5;">
+          {{ comp.name }} - {{ comp.count }}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No competitor mentions detected.</div>
+      {% endif %}
+    </section>
+
+    <section id="geo-events" class="card">
+      <div class="section-title">Detailed Visibility Events</div>
+      {% if geo_rows %}
+      <div style="overflow:auto;max-height:520px;">
+        <table class="table">
+          <thead>
+            <tr><th>Time</th><th>Engine</th><th>Mentioned</th><th>Position</th><th>Sentiment</th><th>Query</th><th>Competitors</th></tr>
+          </thead>
+          <tbody>
+            {% for row in geo_rows %}
+            <tr>
+              <td style="font-size:11px;color:#6b7280;white-space:nowrap;">{{ row.checked_at }}</td>
+              <td style="font-size:11px;font-weight:600;">{{ row.engine }}</td>
+              <td>
+                <span style="font-size:10px;padding:2px 8px;border-radius:12px;{{ 'background:rgba(22,163,74,0.12);color:#16a34a;' if row.kensara_mentioned else 'background:rgba(220,38,38,0.10);color:#dc2626;' }}">
+                  {{ 'Yes' if row.kensara_mentioned else 'No' }}
+                </span>
+              </td>
+              <td style="font-size:11px;color:#64748b;">{{ row.position_score if row.position_score is not none else '-' }}</td>
+              <td style="font-size:11px;color:{% if row.sentiment == 'positive' %}#16a34a{% elif row.sentiment == 'negative' %}#dc2626{% else %}#64748b{% endif %};">{{ row.sentiment }}</td>
+              <td style="font-size:11px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ row.query }}</td>
+              <td style="font-size:11px;color:#64748b;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ ', '.join(row.competitors) if row.competitors else '-' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:#6b7280;">No detailed events in the selected window.</div>
+      {% endif %}
+    </section>
+
+  </div>
+
+</div>
+
+<script>
+async function triggerGeoSync(btn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Syncing...';
+  try {
+    const res = await fetch('/schedule/run/geo_monitor_weekly', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('GEO monitor sync started and completed successfully.', 'success');
+      window.setTimeout(function() { window.location.reload(); }, 700);
+    } else {
+      showToast('GEO sync failed: ' + (data.error || 'unknown error'), 'error');
+    }
+  } catch (e) {
+    showToast('Network error while running GEO sync.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+</script>
+{% endblock %}

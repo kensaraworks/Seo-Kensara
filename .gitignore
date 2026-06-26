@@ -19,3 +19,22 @@ webapp_logs/
 *.zip
 .azure/
 CLAUDE.md
+config/gsc_service_account.json
+config/*.json
+
+# Databases & Caches
+*.db
+*.sqlite3
+
+# Local scratch and experiment files
+scratch/
+
+# Test output and temporary log files
+test_brief_output.json
+test_serp_output.json
+test_err.txt
+test_out.txt
+*.log
+
+# Python utility scripts in drafts/
+drafts/*.py

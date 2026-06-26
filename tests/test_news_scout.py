@@ -85,13 +85,15 @@ def test_score_relevance_returns_int(sample_news_item):
     assert isinstance(score, int), f"Expected int but got {type(score)}"
 
 
-def test_score_relevance_in_valid_range(sample_news_item):
+@patch("src.agents.news_scout.recency_score_delta", return_value=0)
+def test_score_relevance_in_valid_range(mock_delta, sample_news_item):
     """score_relevance must return a value in [0, 20]."""
     score = score_relevance(sample_news_item)
     assert 0 <= score <= 20, f"Score {score} out of valid range [0, 20]"
 
 
-def test_score_relevance_capped_at_20():
+@patch("src.agents.news_scout.recency_score_delta", return_value=0)
+def test_score_relevance_capped_at_20(mock_delta):
     """Score must never exceed 20, even for an extremely keyword-heavy item."""
     item = NewsItem(
         title="DPDPA dpdpa meity data protection board enforcement penalty fine dsar",
@@ -108,7 +110,8 @@ def test_score_relevance_capped_at_20():
     assert score <= 20, f"Score {score} exceeded maximum of 20"
 
 
-def test_score_relevance_empty_item_scores_zero():
+@patch("src.agents.news_scout.recency_score_delta", return_value=0)
+def test_score_relevance_empty_item_scores_zero(mock_delta):
     """A news item with empty title and summary should score 0."""
     item = NewsItem(
         title="",

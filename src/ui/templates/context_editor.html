@@ -1,121 +1,210 @@
 {% extends "base.html" %}
-{% block title %}Context — KensaraAI{% endblock %}
+{% block title %}Context & Setup — KensaraAI{% endblock %}
 {% block content %}
 
 <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;">
   <div>
-    <div class="page-title">Platform Context</div>
-    <div class="page-sub">Stats injected into every blog, LinkedIn post, and newsletter the AI generates.</div>
+    <div class="page-title">Context &amp; Setup</div>
+    <div class="page-sub">Configure the AI's knowledge base. Every blog, brief, and post reads from here before generating.</div>
   </div>
+  <button onclick="saveContext(event)" type="button" id="save-btn-top" class="btn btn-primary" style="flex-shrink:0;">
+    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+    Save all changes
+  </button>
 </div>
 
 <div class="page-content">
+  <form id="context-form" onsubmit="saveContext(event)" style="display:flex;flex-direction:column;gap:20px;">
 
-  <div class="alert-info" style="margin-bottom:20px;display:flex;align-items:flex-start;gap:12px;">
-    <svg width="16" height="16" fill="none" stroke="#818cf8" viewBox="0 0 24 24" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v4m0 4h.01"/></svg>
-    <span style="font-size:12px;color:rgba(165,180,252,0.8);line-height:1.5;">Keep these current. When the AI writes "KensaraAI has processed X DSARs", it reads from here. Real numbers build credibility with enterprise buyers.</span>
-  </div>
-
-  <!-- Diagnostics -->
-  <div class="card" style="margin-bottom: 20px;">
-    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-      <span>LLM Connectivity Diagnostics</span>
-      <button onclick="checkHealth()" type="button" class="btn btn-ghost btn-sm">Refresh Status</button>
-    </div>
-    <div id="health-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
-      <div class="stat-card" style="padding:16px;">
-        <div style="font-size:13px;font-weight:600;color:#fff;">NVIDIA NIM API</div>
-        <div id="health-nvidia" style="margin-top:8px;display:flex;align-items:center;gap:6px;">
-          <span class="loading-text" style="width:60px;height:12px;display:block;"></span>
-        </div>
-      </div>
-      <div class="stat-card" style="padding:16px;">
-        <div style="font-size:13px;font-weight:600;color:#fff;">Groq API</div>
-        <div id="health-groq" style="margin-top:8px;display:flex;align-items:center;gap:6px;">
-          <span class="loading-text" style="width:60px;height:12px;display:block;"></span>
-        </div>
-      </div>
-      <div class="stat-card" style="padding:16px;">
-        <div style="font-size:13px;font-weight:600;color:#fff;">Tavily API</div>
-        <div id="health-tavily" style="margin-top:8px;display:flex;align-items:center;gap:6px;">
-          <span class="loading-text" style="width:60px;height:12px;display:block;"></span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <form id="context-form" onsubmit="saveContext(event)" style="display:flex;flex-direction:column;gap:16px;">
-
-    <!-- Platform stats -->
+    <!-- ── SECTION 1: Model Routing & API Status ─────────────────────────── -->
     <div class="card">
-      <div class="section-title">Platform Statistics</div>
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Model Routing &amp; API Status</span>
+        <button onclick="checkHealth()" type="button" class="btn btn-ghost btn-sm">Refresh</button>
+      </div>
+
+      <!-- API health cards -->
+      <div id="health-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">NVIDIA NIM API</div>
+          <div id="health-nvidia" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">Mistral-3.5 / Assembly fallback</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Groq API</div>
+          <div id="health-groq" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">LLaMA-3.3-70B / Primary LLM</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Tavily Search API</div>
+          <div id="health-tavily" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">News supplementation layer</div>
+        </div>
+      </div>
+
+      <!-- Groq daily token quota -->
+      <div style="background:#f8fafc;border:1px solid rgba(0,0,0,0.07);border-radius:8px;padding:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <div style="font-size:12px;font-weight:600;color:#374151;">
+            Groq Daily Token Quota
+            <span style="font-weight:400;color:#94a3b8;margin-left:4px;">(resets midnight UTC)</span>
+          </div>
+          <div id="groq-quota-text" style="font-size:12px;font-weight:700;color:#4f46e5;">
+            <span class="loading-text" style="width:120px;height:12px;display:inline-block;vertical-align:middle;"></span>
+          </div>
+        </div>
+        <div style="height:6px;background:rgba(0,0,0,0.08);border-radius:4px;overflow:hidden;">
+          <div id="groq-quota-bar" style="height:100%;width:0%;background:#22c55e;border-radius:4px;transition:width 0.6s ease,background 0.4s ease;"></div>
+        </div>
+        <div id="groq-quota-note" style="font-size:11px;color:#94a3b8;margin-top:6px;">Groq free tier: 100,000 tokens/day. NVIDIA Mistral activates automatically when quota exhausted.</div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 2: Platform Traction Stats ────────────────────────────── -->
+    <div class="card">
+      <div class="section-title">Platform Traction Stats</div>
+      <div class="alert-info" style="margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;padding:10px 14px;">
+        <svg width="14" height="14" fill="none" stroke="#6366f1" viewBox="0 0 24 24" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v4m0 4h.01"/></svg>
+        <span style="font-size:11px;color:#4f46e5;line-height:1.5;">These numbers are injected verbatim into the AI context. When a blog says "KensaraAI has processed <em>X</em> DSARs across <em>Y</em> enterprise clients", it reads from here. Keep them current.</span>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
-        {% for name, key, placeholder, hint in [
-          ('DSARs Processed', 'dsars_processed', '0', 'Total DSAR requests handled'),
-          ('Consents Recorded', 'consents_recorded', '0', 'Consent records captured via M3'),
-          ('Breach Clocks Managed', 'breach_clocks_managed', '0', '72h clocks auto-started'),
-          ('Clients Onboarded', 'clients_onboarded', '0', 'Enterprise clients on platform'),
-          ('Avg Compliance Score (%)', 'compliance_score_avg', '0', 'Post-onboarding score'),
-          ('Countries Covered', 'countries_covered', '3', 'India, UK, US'),
-          ('Active Modules', 'modules_active', '3', 'M2 DSAR, M3 Consent, M5 GRC'),
+        {% for label, key, hint in [
+          ('DSARs Processed', 'dsars_processed', 'Total DSAR requests handled by M2'),
+          ('Consents Recorded', 'consents_recorded', 'Consent events captured via M3'),
+          ('Breach Clocks Started', 'breach_clocks_started', '72-hour clocks auto-triggered'),
+          ('Clients Onboarded', 'clients_onboarded', 'Enterprise clients active on platform'),
+          ('Avg Compliance Score (%)', 'compliance_score_avg', 'Post-onboarding average score'),
+          ('Countries Covered', 'countries_covered', 'India, UK, US regulatory coverage'),
         ] %}
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:6px;">{{ name }}</label>
-          <input type="number" name="{{ key }}" value="{{ stats[key] if stats[key] is defined else '' }}"
-                 placeholder="{{ placeholder }}" min="0"
-                 style="width:100%;" />
-          <div style="font-size:11px;color:rgba(255,255,255,0.2);margin-top:4px;line-height:1.4;">{{ hint }}</div>
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">{{ label }}</label>
+          <input type="number" name="{{ key }}" value="{{ stats.get(key, 0) }}" min="0" style="width:100%;" />
+          <div style="font-size:10px;color:#94a3b8;margin-top:4px;line-height:1.4;">{{ hint }}</div>
         </div>
         {% endfor %}
       </div>
     </div>
 
-    <!-- Pricing -->
+    <!-- ── SECTION 3: Brand & Pricing ────────────────────────────────────── -->
     <div class="card">
-      <div class="section-title">Pricing</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+      <div class="section-title">Brand &amp; Pricing</div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <!-- Tagline — full width -->
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:6px;">KensaraAI Low (₹/yr)</label>
-          <input type="number" name="pricing_inr_low" value="{{ stats.pricing_inr_low }}" placeholder="1500000" min="0" style="width:100%;" />
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Brand Tagline</label>
+          <input type="text" name="tagline" value="{{ stats.get('tagline', '') }}"
+                 placeholder="India's first AI-native DPDPA + GDPR + GRC compliance platform"
+                 style="width:100%;" />
+          <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Used verbatim in introductions, comparison sections, and competitive positioning.</div>
         </div>
+
+        <!-- Azure / Incubators / Demo URL -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+          <div>
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Azure Region</label>
+            <input type="text" name="azure_region" value="{{ stats.get('azure_region', '') }}"
+                   placeholder="Azure India (Central + South)" style="width:100%;" />
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Incubators</label>
+            <input type="text" name="incubators" value="{{ stats.get('incubators', '') }}"
+                   placeholder="MeitY GENESIS EIR 2.0, IITG TIC" style="width:100%;" />
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Demo URL</label>
+            <input type="url" name="demo_url" value="{{ stats.get('demo_url', '') }}"
+                   placeholder="https://www.kensara.in/book-demo" style="width:100%;" />
+          </div>
+        </div>
+
+        <!-- Pricing -->
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:6px;">KensaraAI High (₹/yr)</label>
-          <input type="number" name="pricing_inr_high" value="{{ stats.pricing_inr_high }}" placeholder="4000000" min="0" style="width:100%;" />
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:10px;">Pricing (₹/year)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+            <div>
+              <label style="display:block;font-size:10px;color:#94a3b8;margin-bottom:5px;">KensaraAI Entry</label>
+              <input type="number" name="pricing_inr_low" value="{{ stats.get('pricing_inr_low', 1500000) }}" min="0" style="width:100%;" />
+              <div style="font-size:10px;color:#b0b7c3;margin-top:3px;">₹{{ '{:,}'.format(stats.get('pricing_inr_low', 1500000)) }}</div>
+            </div>
+            <div>
+              <label style="display:block;font-size:10px;color:#94a3b8;margin-bottom:5px;">KensaraAI Enterprise</label>
+              <input type="number" name="pricing_inr_high" value="{{ stats.get('pricing_inr_high', 4000000) }}" min="0" style="width:100%;" />
+              <div style="font-size:10px;color:#b0b7c3;margin-top:3px;">₹{{ '{:,}'.format(stats.get('pricing_inr_high', 4000000)) }}</div>
+            </div>
+            <div>
+              <label style="display:block;font-size:10px;color:#94a3b8;margin-bottom:5px;">OneTrust Reference</label>
+              <input type="number" name="competitor_price_inr" value="{{ stats.get('competitor_price_inr', 7500000) }}" min="0" style="width:100%;" />
+              <div style="font-size:10px;color:#b0b7c3;margin-top:3px;">₹{{ '{:,}'.format(stats.get('competitor_price_inr', 7500000)) }} · used in cost comparisons</div>
+            </div>
+          </div>
         </div>
-        <div>
-          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:6px;">OneTrust Reference (₹/yr)</label>
-          <input type="number" name="competitor_price_inr" value="{{ stats.competitor_price_inr }}" placeholder="7500000" min="0" style="width:100%;" />
-        </div>
+
       </div>
     </div>
 
-    <!-- Brand + custom note -->
+    <!-- ── SECTION 4: Content Pipeline Settings ──────────────────────────── -->
     <div class="card">
-      <div class="section-title">Brand Details</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+      <div class="section-title">Content Pipeline Settings</div>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:24px;align-items:start;">
+
+        <!-- News age filter -->
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:6px;">Incubators</label>
-          <input type="text" name="incubators" value="{{ stats.incubators }}" placeholder="MeitY GENESIS EIR 2.0, IITG TIC" style="width:100%;" />
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">News Max Age (days)</label>
+          <input type="number" name="news_max_age_days" id="news-age-input"
+                 value="{{ stats.get('news_max_age_days', 90) }}" min="7" max="365"
+                 oninput="document.getElementById('news-age-display').textContent=this.value+' days'"
+                 style="width:100%;" />
+          <div id="news-age-display" style="font-size:11px;color:#6b7280;margin-top:6px;">{{ stats.get('news_max_age_days', 90) }} days</div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:4px;line-height:1.5;">RSS articles older than this are discarded. 30–90 days recommended.</div>
         </div>
+
+        <!-- Keyword rotation -->
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:6px;">Demo URL</label>
-          <input type="url" name="demo_url" value="{{ stats.demo_url }}" placeholder="https://kensara.in/request-demo" style="width:100%;" />
+          <label style="display:block;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">
+            Keyword Rotation Pool
+            <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">&nbsp;(one per line)</span>
+          </label>
+          <textarea id="keyword_rotation_text" name="keyword_rotation_text" rows="7"
+                    oninput="updateKeywordPreview()"
+                    placeholder="DPDPA compliance software India&#10;data protection officer India&#10;DPBI enforcement tracker&#10;DSAR automation platform&#10;consent management India DPDPA&#10;data breach notification India&#10;GDPR vs DPDPA comparison"
+                    style="width:100%;font-family:monospace;font-size:12px;resize:vertical;">{{ stats.get('keyword_rotation_text', '') }}</textarea>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+            <div style="font-size:10px;color:#94a3b8;line-height:1.5;">Scheduled posts cycle through this list deterministically by ISO week number.</div>
+            <div id="keyword-preview-chip" style="font-size:11px;background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.22);border-radius:6px;padding:4px 10px;white-space:nowrap;color:#4f46e5;display:none;flex-shrink:0;margin-left:12px;">
+              This week: <strong id="keyword-preview-text"></strong>
+            </div>
+          </div>
         </div>
-      </div>
-      <div>
-        <label style="display:block;font-size:11px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:6px;">Custom note for AI <span style="font-weight:400;opacity:0.5;">(optional)</span></label>
-        <textarea name="custom_note" rows="3" placeholder="e.g. We just signed a deal with Tata Steel. Mention enterprise traction in next blog.">{{ stats.custom_note }}</textarea>
-        <div style="font-size:11px;color:rgba(255,255,255,0.2);margin-top:6px;">Appended to AI context on next generation run.</div>
+
       </div>
     </div>
 
-    <!-- Save -->
-    <div style="display:flex;align-items:center;gap:14px;">
+    <!-- ── SECTION 5: Custom AI Directive ────────────────────────────────── -->
+    <div class="card">
+      <div class="section-title">Custom AI Directive</div>
+      <div class="alert-info" style="margin-bottom:14px;display:flex;align-items:flex-start;gap:10px;padding:10px 14px;">
+        <svg width="14" height="14" fill="none" stroke="#6366f1" viewBox="0 0 24 24" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span style="font-size:11px;color:#4f46e5;line-height:1.5;">One-shot override. Appended to the AI system prompt on the <strong>next generation run only</strong>. Use for breaking news, upcoming events, or specific positioning you want foregrounded. Clear after use.</span>
+      </div>
+      <textarea name="custom_note" rows="4"
+                placeholder="e.g. We just closed a Series A and signed Tata Steel as our anchor client. Weave in enterprise traction and funding momentum where natural. Avoid mentioning fundraise amount."
+                style="width:100%;">{{ stats.get('custom_note', '') }}</textarea>
+    </div>
+
+    <!-- Save (bottom) -->
+    <div style="display:flex;align-items:center;gap:14px;padding-bottom:8px;">
       <button type="submit" id="save-btn" class="btn btn-primary">
         <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-        Save context
+        Save all changes
       </button>
-      <span style="font-size:12px;color:rgba(255,255,255,0.25);">Changes apply on next content generation run.</span>
+      <span id="save-status" style="font-size:12px;color:#94a3b8;">Changes take effect on the next content generation run.</span>
     </div>
 
   </form>
@@ -125,43 +214,107 @@
 
 {% block extra_scripts %}
 <script>
+// ── Health check ──────────────────────────────────────────────────────────────
 function checkHealth() {
-  const ids = ['nvidia','groq','tavily'];
-  ids.forEach(id => {
-    document.getElementById('health-'+id).innerHTML = '<span class="loading-text" style="width:60px;height:12px;display:block;"></span>';
+  ['nvidia','groq','tavily'].forEach(id => {
+    document.getElementById('health-'+id).innerHTML =
+      '<span class="loading-text" style="width:80px;height:12px;display:block;"></span>';
   });
   fetch('/api/v1/health/llms').then(r=>r.json()).then(data=>{
-    ids.forEach(id => {
+    ['nvidia','groq','tavily'].forEach(id => {
       const d = data[id];
       const el = document.getElementById('health-'+id);
-      if(!d) { el.innerHTML='<span class="pulse-dot red"></span><span style="font-size:12px;color:#ef4444;margin-left:6px;">Offline</span>'; return; }
-      if(d.status==='ok') {
-        el.innerHTML='<span class="pulse-dot green"></span><span style="font-size:12px;color:#4ade80;margin-left:6px;">Operational ('+d.latency_ms+'ms)</span>';
-      } else if (d.status==='missing_key') {
-        el.innerHTML='<span class="pulse-dot amber"></span><span style="font-size:12px;color:#f59e0b;margin-left:6px;">Missing API Key</span>';
+      if (!d) { el.innerHTML = dot('red') + label('Offline','#ef4444'); return; }
+      if (d.status === 'ok') {
+        el.innerHTML = dot('green') + label('Operational · '+d.latency_ms+'ms','#16a34a');
+      } else if (d.status === 'missing_key') {
+        el.innerHTML = dot('amber') + label('No API key','#d97706');
       } else {
-        el.innerHTML='<span class="pulse-dot red"></span><span style="font-size:12px;color:#ef4444;margin-left:6px;">Error</span>';
+        el.innerHTML = dot('red') + label(d.error||'Error','#dc2626');
       }
     });
   }).catch(()=>{
-    ids.forEach(id => {
-      document.getElementById('health-'+id).innerHTML='<span class="pulse-dot red"></span><span style="font-size:12px;color:#ef4444;margin-left:6px;">Network Error</span>';
+    ['nvidia','groq','tavily'].forEach(id => {
+      document.getElementById('health-'+id).innerHTML = dot('red') + label('Network error','#dc2626');
     });
   });
 }
-document.addEventListener("DOMContentLoaded", checkHealth);
 
+function dot(c) { return '<span class="pulse-dot '+c+'"></span>'; }
+function label(t,c) { return '<span style="font-size:12px;color:'+c+';margin-left:6px;font-weight:500;">'+t+'</span>'; }
+
+// ── Groq daily quota bar ──────────────────────────────────────────────────────
+function loadGroqQuota() {
+  fetch('/api/v1/usage/today').then(r=>r.json()).then(d=>{
+    const used = d.groq_tokens_today || 0;
+    const limit = d.groq_daily_limit || 100000;
+    const pct = Math.min(100, Math.round(used / limit * 100));
+    const bar = document.getElementById('groq-quota-bar');
+    const txt = document.getElementById('groq-quota-text');
+    bar.style.width = pct + '%';
+    bar.style.background = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#22c55e';
+    txt.textContent = (used/1000).toFixed(1) + 'k / ' + (limit/1000).toFixed(0) + 'k tokens (' + pct + '%)';
+    const note = document.getElementById('groq-quota-note');
+    if (pct >= 90) {
+      note.style.color = '#dc2626';
+      note.textContent = 'Warning: quota nearly exhausted. NVIDIA Mistral is active as fallback for all LLM calls.';
+    } else if (pct >= 70) {
+      note.style.color = '#d97706';
+      note.textContent = 'Approaching daily limit. NVIDIA Mistral fallback is standing by.';
+    }
+    if (d.total_cost_today_usd > 0) {
+      note.textContent += '  NVIDIA cost today: $' + d.total_cost_today_usd.toFixed(4);
+    }
+  }).catch(()=>{
+    document.getElementById('groq-quota-text').textContent = 'Unavailable';
+  });
+}
+
+// ── Keyword preview (ISO week) ────────────────────────────────────────────────
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  const y = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t - y) / 86400000 + 1) / 7);
+}
+
+function updateKeywordPreview() {
+  const lines = document.getElementById('keyword_rotation_text').value
+    .split('\n').map(l => l.trim()).filter(l => l);
+  const chip = document.getElementById('keyword-preview-chip');
+  if (!lines.length) { chip.style.display = 'none'; return; }
+  document.getElementById('keyword-preview-text').textContent = lines[isoWeek(new Date()) % lines.length];
+  chip.style.display = 'flex';
+}
+
+// ── Save form ─────────────────────────────────────────────────────────────────
 function saveContext(e) {
   e.preventDefault();
-  const btn = document.getElementById('save-btn');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  const fd = new FormData(document.getElementById('context-form'));
-  fetch('/context/save', {method:'POST', body:fd}).then(r=>r.json()).then(d=>{
-    showToast(d.ok ? (d.message||'Context saved') : 'Error: '+d.error, d.ok?'success':'error');
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Save context';
-  }).catch(()=>{ showToast('Network error','error'); btn.disabled=false; btn.textContent='Save context'; });
+  ['save-btn','save-btn-top'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) { b.disabled = true; b.textContent = 'Saving…'; }
+  });
+  fetch('/context/save', {method:'POST', body: new FormData(document.getElementById('context-form'))})
+    .then(r=>r.json())
+    .then(d=>{
+      showToast(d.ok ? (d.message || 'Context saved') : 'Error: '+d.error, d.ok ? 'success' : 'error');
+      const s = document.getElementById('save-status');
+      if (s) { s.textContent = d.ok ? 'Saved at ' + new Date().toLocaleTimeString() : 'Save failed.'; s.style.color = d.ok ? '#16a34a' : '#dc2626'; }
+      ['save-btn','save-btn-top'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) { b.disabled = false; b.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Save all changes'; }
+      });
+    })
+    .catch(()=>{
+      showToast('Network error', 'error');
+      ['save-btn','save-btn-top'].forEach(id => { const b=document.getElementById(id); if(b){b.disabled=false;b.textContent='Save all changes';} });
+    });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  checkHealth();
+  loadGroqQuota();
+  updateKeywordPreview();
+});
 </script>
 {% endblock %}
