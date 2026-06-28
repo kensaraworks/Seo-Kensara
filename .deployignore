@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+.env
+venv/
+.venv/
+node_modules/
+drafts/.cache/
+*.log
+test_*.txt
+scratch/
