@@ -231,10 +231,11 @@ def get_calendar_slot(
 
     return CalendarSlot(
         run_date=run_date,
-        action=CalendarAction.SKIP,
-        tier=None,
-        content_type="none",
-        reason="no forced daily post; quality over frequency",
+        action=CalendarAction.SUPPORTING_CLUSTER_POST,
+        tier=2,
+        content_type="supporting_cluster",
+        reason="Placeholder shell slug fill slot for non-scheduled days",
+        source="shell_slug_catalog",
     )
 
 

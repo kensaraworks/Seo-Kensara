@@ -558,4 +558,153 @@ async def trigger_enforcement_update():
         return {"status": "error", "message": str(exc)}
 
 
+@router.post("/blogs/publish/{slug}")
+async def publish_blog_to_supabase(slug: str):
+    """Manually publish a specific approved blog draft to Supabase public.blogs.
 
+    Looks for a matching draft file in drafts/blogs/ by slug, reads its
+    frontmatter, and calls the Supabase publisher. Works for both freshly
+    approved posts and re-publishes (upsert on slug conflict).
+    """
+    from pathlib import Path
+    from src.config import settings
+    from src.agents.blog_writer import BlogPost
+    from src.publishers.supabase_publisher import publish_to_supabase
+
+    drafts_dir = Path(settings.content_output_dir) / "blogs"
+    # Find the most recent file matching the slug
+    matching = sorted(drafts_dir.glob(f"*-{slug}.md"), reverse=True)
+    if not matching:
+        return {"status": "error", "error": f"No draft found for slug: {slug}"}
+
+    target_path = matching[0]
+    try:
+        full_text = target_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"status": "error", "error": str(exc)}
+
+    # Parse frontmatter
+    import re
+    _FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+    fm: dict = {}
+    match = _FM_RE.match(full_text)
+    if match:
+        for line in match.group(1).splitlines():
+            if ":" not in line:
+                continue
+            k, _, v = line.partition(":")
+            fm[k.strip()] = v.strip().strip('"').strip("'")
+
+    post = BlogPost(
+        title=str(fm.get("title", slug)),
+        meta_description=str(fm.get("meta_description", "")),
+        slug=str(fm.get("slug", slug)),
+        primary_keyword=str(fm.get("primary_keyword", slug)),
+        content_markdown=full_text,
+        word_count=int(fm.get("word_count", len(full_text.split()))),
+        cluster=str(fm.get("cluster", "general")),
+        intent=str(fm.get("intent", "informational")),
+        tier=int(fm.get("tier", 2) or 2),
+        geo_score=int(fm.get("geo_score", 0) or 0),
+        qa_score=float(fm.get("qa_score", 0.0) or 0.0),
+        risk_level=str(fm.get("risk_level", "HIGH")),
+        approved=True,
+        schema_json=str(fm.get("schema_json", "{}")),
+        image_url=fm.get("image_url") or None,
+        pillar=str(fm.get("pillar", "")),
+        category=str(fm.get("category", "")),
+    )
+
+    result = await publish_to_supabase(post)
+    return result
+
+
+@router.post("/blogs/publish-all")
+async def publish_all_approved_to_supabase():
+    """Batch-publish all approved blog drafts to Supabase public.blogs.
+
+    Iterates drafts/blogs/, collects all files with `approved: true` and
+    `status: approved`, and publishes each one. Already-published posts are
+    safely upserted (Supabase ON CONFLICT slug DO UPDATE).
+    Returns a summary dict with counts and per-slug results.
+    """
+    from pathlib import Path
+    import re
+    from src.config import settings
+    from src.agents.blog_writer import BlogPost
+    from src.publishers.supabase_publisher import publish_to_supabase
+
+    _FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+    drafts_dir = Path(settings.content_output_dir) / "blogs"
+
+    if not drafts_dir.exists():
+        return {"status": "error", "error": "drafts/blogs directory not found"}
+
+    results = []
+    published = skipped = errors = 0
+
+    for md_file in sorted(drafts_dir.glob("*.md"), reverse=True):
+        try:
+            full_text = md_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        fm: dict = {}
+        match = _FM_RE.match(full_text)
+        if match:
+            for line in match.group(1).splitlines():
+                if ":" not in line:
+                    continue
+                k, _, v = line.partition(":")
+                fm[k.strip()] = v.strip().strip('"').strip("'")
+
+        # Only publish approved blog drafts
+        is_approved = str(fm.get("approved", "false")).lower() == "true"
+        status = str(fm.get("status", "draft")).lower()
+        if not is_approved or status not in ("approved",):
+            continue
+
+        slug = str(fm.get("slug", md_file.stem))
+        post = BlogPost(
+            title=str(fm.get("title", slug)),
+            meta_description=str(fm.get("meta_description", "")),
+            slug=slug,
+            primary_keyword=str(fm.get("primary_keyword", slug)),
+            content_markdown=full_text,
+            word_count=int(fm.get("word_count", len(full_text.split()))),
+            cluster=str(fm.get("cluster", "general")),
+            intent=str(fm.get("intent", "informational")),
+            tier=int(fm.get("tier", 2) or 2),
+            geo_score=int(fm.get("geo_score", 0) or 0),
+            qa_score=float(fm.get("qa_score", 0.0) or 0.0),
+            risk_level=str(fm.get("risk_level", "HIGH")),
+            approved=True,
+            schema_json=str(fm.get("schema_json", "{}")),
+            image_url=fm.get("image_url") or None,
+            pillar=str(fm.get("pillar", "")),
+            category=str(fm.get("category", "")),
+        )
+
+        result = await publish_to_supabase(post)
+        results.append({"slug": slug, **result})
+        if result.get("status") == "published":
+            published += 1
+        elif result.get("status") == "skipped":
+            skipped += 1
+        else:
+            errors += 1
+
+    log.info(
+        "supabase_publish_all_done",
+        total=len(results),
+        published=published,
+        skipped=skipped,
+        errors=errors,
+    )
+    return {
+        "total": len(results),
+        "published": published,
+        "skipped": skipped,
+        "errors": errors,
+        "results": results,
+    }

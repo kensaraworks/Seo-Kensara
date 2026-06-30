@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 import structlog
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -110,6 +110,7 @@ def _collect_all_items(status_filter: list[str] | None = None) -> list[dict]:
                     "word_count": fm.get("word_count", 0),
                     "model": fm.get("model", ""),
                     "meta_description": fm.get("meta_description", ""),
+                    "image_url": fm.get("image_url", ""),
                     "content": text,
                     "body": _FRONTMATTER_RE.sub("", text).strip(),
                 }
@@ -194,9 +195,58 @@ async def approve_item(folder: str, filename: str) -> JSONResponse:
             except Exception as exc:
                 log.warning("indexing_ping_exception_non_blocking", error=str(exc))
 
+        # ── Supabase publish (blog posts only) ──────────────────────────────
+        supabase_result: dict = {}
+        if folder == "blogs":
+            try:
+                from src.agents.blog_writer import BlogPost
+                from src.publishers.supabase_publisher import publish_to_supabase
+
+                # Re-read body for full content
+                full_text = path.read_text(encoding="utf-8")
+                fm = _parse_frontmatter(full_text)
+
+                # Build a minimal BlogPost from frontmatter to pass to publisher.
+                # content_markdown holds the full file (frontmatter + body).
+                post_for_publish = BlogPost(
+                    title=str(fm.get("title", filename)),
+                    meta_description=str(fm.get("meta_description", "")),
+                    slug=str(fm.get("slug", path.stem)),
+                    primary_keyword=str(fm.get("primary_keyword", "")),
+                    content_markdown=full_text,
+                    word_count=int(fm.get("word_count", len(full_text.split()))),
+                    cluster=str(fm.get("cluster", "general")),
+                    intent=str(fm.get("intent", "informational")),
+                    tier=int(fm.get("tier", 2)),
+                    geo_score=int(fm.get("geo_score", 0)),
+                    qa_score=float(fm.get("qa_score", 0.0)),
+                    risk_level=str(fm.get("risk_level", "HIGH")),
+                    approved=True,
+                    author=str(fm.get("author", "Mr Rudraksh Tatwal")),
+                    author_credentials=str(fm.get("author_credentials", "Founder & CEO, KensaraAI")),
+                    date_created=str(fm.get("date_created", "")),
+                    schema_json=str(fm.get("schema_json", "{}")),
+                    image_url=fm.get("image_url") or None,
+                    pillar=str(fm.get("pillar", "")),
+                    category=str(fm.get("category", "")),
+                )
+                supabase_result = await publish_to_supabase(post_for_publish)
+                log.info(
+                    "supabase_auto_publish_result",
+                    slug=post_for_publish.slug,
+                    status=supabase_result.get("status"),
+                )
+            except Exception as exc:
+                log.warning("supabase_auto_publish_exception_non_blocking", error=str(exc))
+                supabase_result = {"status": "error", "error": str(exc)}
+
         _append_activity("approved", updated_frontmatter.get("title", filename), folder)
         log.info("content_approved", path=str(path))
-        return JSONResponse({"ok": True, "status": "approved"})
+        return JSONResponse({
+            "ok": True,
+            "status": "approved",
+            "supabase": supabase_result,
+        })
     except OSError as exc:
         log.error("approve_write_error", path=str(path), error=str(exc))
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
@@ -242,4 +292,64 @@ async def edit_item(folder: str, filename: str, content: str = Form(...)) -> JSO
         return JSONResponse({"ok": True})
     except OSError as exc:
         log.error("edit_write_error", path=str(path), error=str(exc))
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.post("/upload-banner/{folder}/{filename}", response_class=JSONResponse)
+async def upload_banner(folder: str, filename: str, file: UploadFile = File(...)) -> JSONResponse:
+    """Upload a banner image file for a blog draft."""
+    path = _resolve_path(folder, filename)
+    if path is None or not path.exists():
+        return JSONResponse({"ok": False, "error": "File not found"}, status_code=404)
+    try:
+        if folder != "blogs":
+            return JSONResponse({"ok": False, "error": "Only blogs support banner upload"}, status_code=400)
+
+        # Create static/uploads directory if not exists
+        static_uploads = Path("static") / "uploads"
+        static_uploads.mkdir(parents=True, exist_ok=True)
+
+        # Keep original extension or fallback to .jpg
+        orig_suffix = Path(file.filename or "").suffix or ".jpg"
+        import uuid
+        unique_name = f"{uuid.uuid4()}{orig_suffix}"
+        dest_path = static_uploads / unique_name
+
+        # Save uploaded file
+        with open(dest_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+
+        relative_url = f"/static/uploads/{unique_name}"
+
+        # Update the frontmatter of the Markdown file
+        text = path.read_text(encoding="utf-8")
+        text = _replace_frontmatter_field(text, "image_url", relative_url)
+        path.write_text(text, encoding="utf-8")
+
+        log.info("banner_uploaded", path=str(path), url=relative_url)
+        return JSONResponse({"ok": True, "image_url": relative_url})
+    except Exception as exc:
+        log.error("upload_banner_error", path=str(path), error=str(exc))
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.post("/update-banner-url/{folder}/{filename}", response_class=JSONResponse)
+async def update_banner_url(folder: str, filename: str, image_url: str = Form(...)) -> JSONResponse:
+    """Manually update or clear the banner image URL for a blog draft."""
+    path = _resolve_path(folder, filename)
+    if path is None or not path.exists():
+        return JSONResponse({"ok": False, "error": "File not found"}, status_code=404)
+    try:
+        if folder != "blogs":
+            return JSONResponse({"ok": False, "error": "Only blogs support banner URLs"}, status_code=400)
+
+        text = path.read_text(encoding="utf-8")
+        text = _replace_frontmatter_field(text, "image_url", image_url.strip())
+        path.write_text(text, encoding="utf-8")
+
+        log.info("banner_url_updated", path=str(path), url=image_url)
+        return JSONResponse({"ok": True})
+    except Exception as exc:
+        log.error("update_banner_url_error", path=str(path), error=str(exc))
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)

@@ -39,7 +39,8 @@ def test_weekly_calendar_cadence_and_skip_days():
     assert friday.action == CalendarAction.SUPPORTING_CLUSTER_POST
 
     saturday = get_calendar_slot(date(2026, 7, 4))
-    assert saturday.action == CalendarAction.SKIP
+    assert saturday.action == CalendarAction.SUPPORTING_CLUSTER_POST
+    assert saturday.source == "shell_slug_catalog"
 
 
 def test_queue_capacity_alerts_at_7_and_blocks_at_10():

@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     mailchimp_api_key: str = Field("", env="MAILCHIMP_API_KEY")
     mailchimp_list_id: str = Field("", env="MAILCHIMP_LIST_ID")
 
+    # Supabase — blog publishing to public.blogs table
+    # Get URL from: Supabase Dashboard → Project Settings → API → Project URL
+    # Get key from: Supabase Dashboard → Project Settings → API → service_role secret
+    supabase_url: str = Field("", env="SUPABASE_URL")
+    supabase_service_key: str = Field("", env="SUPABASE_SERVICE_KEY")
+
     # Content
     content_output_dir: str = Field("drafts", env="CONTENT_OUTPUT_DIR")
     blog_cadence: str = Field("daily", env="BLOG_CADENCE")  # daily | weekly

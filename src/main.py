@@ -211,7 +211,16 @@ async def run_blog_generate(story: ScoredNewsItem | None = None) -> None:
                 return
             slot = get_calendar_slot(date.today(), intelligence_score=top_story.relevance_score)
 
-        queued_item = None if slot.action == CalendarAction.TIER3_NEWSJACK else job_queue.pop_content_queue()
+        if slot.action == CalendarAction.TIER3_NEWSJACK:
+            queued_item = None
+        elif slot.source == "shell_slug_catalog":
+            queued_item = job_queue.pop_content_queue(require_source="shell_slug_catalog")
+            if not queued_item:
+                log.info("job_blog_no_shell_slugs_left", reason="All 33 target shell placeholders are already filled. Skipping this slot.")
+                return
+        else:
+            queued_item = job_queue.pop_content_queue(exclude_source="shell_slug_catalog")
+
         if queued_item:
             keyword = queued_item["keyword"]
             intent_type = queued_item.get("intent_type") or IntentType.INFORMATIONAL.value
@@ -433,9 +442,40 @@ async def run_seasonal_preload_daily() -> None:
         log.error("job_seasonal_preload_daily_failed", error=str(exc))
 
 
+def _seed_shell_slugs() -> None:
+    """Enqueue any un-generated shell slugs from blog_slug_reference.md.
+
+    The 33 pre-registered URL shells on kensara.in are high-priority targets.
+    This function runs on every startup (idempotent — uses ON CONFLICT IGNORE
+    logic inside enqueue_content) so missing slugs are always queued.
+    """
+    from src.data.shell_slugs import SHELL_SLUGS
+    from src.agents.intent_classifier import IntentType
+    queued = 0
+    for entry in SHELL_SLUGS:
+        try:
+            job_queue.enqueue_content(
+                keyword=entry["title"],
+                intent_type=IntentType.INFORMATIONAL.value,
+                cluster_id=entry["pillar"],
+                priority_score=90.0,  # High priority — targeted shell slugs
+                paa_questions=[],
+                tier=entry["tier"],
+                content_type=f"tier{entry['tier']}",
+                source="shell_slug_catalog",
+                reason=f"Pre-registered shell slug: /blogs/{entry['pillar']}/{entry['slug']}",
+            )
+            queued += 1
+        except Exception as exc:
+            log.warning("shell_slug_enqueue_failed", slug=entry["slug"], error=str(exc))
+    log.info("shell_slugs_seeded", total=len(SHELL_SLUGS), newly_queued=queued)
+
+
 def main() -> None:
     # Seed seasonal calendar on every startup — idempotent
     seed_calendar_on_startup()
+    # Seed pre-registered shell slug targets from blog_slug_reference.md
+    _seed_shell_slugs()
 
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 

@@ -146,11 +146,24 @@ class BlogPost(BaseModel):
     wp_post_id: Optional[str] = None
     wp_post_url: Optional[str] = None
 
+    # ── Supabase public.blogs fields (seo_agent_post_guide.md) ──────────────
+    # Cover banner image URL. Rendered by Next.js above the article body.
+    image_url: Optional[str] = None
+    # Exact pillar slug from blog_slug_reference.md (resolved at publish time).
+    # Stored here so the object is self-contained after generation.
+    pillar: str = ""
+    # Badge displayed on the blog card (e.g. "Fintech", "Guide", "Deep dive").
+    category: str = ""
+
 
 # ---------------------------------------------------------------------------
 def _assemble_post(keyword: str, content: str, meta: dict) -> BlogPost:
     """Build a BlogPost from assembled content + meta dict."""
+    from src.data.shell_slugs import CLUSTER_TO_PILLAR, CLUSTER_TO_CATEGORY
     slug = meta.get("slug", _slugify(keyword))
+    cluster = meta.get("cluster", "general")
+    pillar = CLUSTER_TO_PILLAR.get(cluster, "fundamentals")
+    category = meta.get("category", CLUSTER_TO_CATEGORY.get(cluster, "Guide"))
     return BlogPost(
         title=meta.get("title", keyword),
         meta_description=meta.get("description", ""),
@@ -160,7 +173,7 @@ def _assemble_post(keyword: str, content: str, meta: dict) -> BlogPost:
         content_markdown=content,
         word_count=len(content.split()),
         cta_url=meta.get("cta_url", "https://www.kensara.in/book-demo"),
-        cluster=meta.get("cluster", "general"),
+        cluster=cluster,
         intent=meta.get("intent", "informational"),
         tier=meta.get("tier", 1),
         geo_score=meta.get("geo_score", 0),
@@ -172,6 +185,9 @@ def _assemble_post(keyword: str, content: str, meta: dict) -> BlogPost:
         internal_links_injected=meta.get("internal_links_injected", []),
         source_story_url=meta.get("source_story_url"),
         featured_image_alt=meta.get("featured_image_alt", f"{keyword} — kensara.in"),
+        image_url=meta.get("image_url"),
+        pillar=pillar,
+        category=category,
     )
 
 

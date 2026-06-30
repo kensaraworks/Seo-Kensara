@@ -978,30 +978,39 @@ class JobQueue:
         except sqlite3.Error as exc:
             log.error("db_enqueue_content_failed", keyword=keyword, error=str(exc))
 
-    def pop_content_queue(self) -> dict[str, Any] | None:
+    def pop_content_queue(self, exclude_source: str | None = None, require_source: str | None = None) -> dict[str, Any] | None:
         """Pop the highest priority due keyword from the content queue."""
         try:
+            query = """
+                SELECT * FROM content_queue 
+                WHERE status = 'queued'
+                  AND (scheduled_for IS NULL OR scheduled_for <= date('now'))
+            """
+            params = []
+            if exclude_source:
+                query += " AND source != ?"
+                params.append(exclude_source)
+            if require_source:
+                query += " AND source = ?"
+                params.append(require_source)
+
+            query += """
+                ORDER BY
+                    CASE
+                        WHEN content_type IN ('tier3', 'newsjack', 'tier3_newsjack') THEN 1
+                        WHEN rank_position BETWEEN 8 AND 20 THEN 2
+                        WHEN zero_coverage = 1 THEN 3
+                        WHEN content_type LIKE '%pillar%' THEN 4
+                        WHEN content_type IN ('tier2', 'supporting_cluster') THEN 5
+                        WHEN content_type LIKE '%refresh%' THEN 6
+                        ELSE 7
+                    END ASC,
+                    priority_score DESC,
+                    id ASC
+                LIMIT 1
+            """
             with self._connect() as conn:
-                row = conn.execute(
-                    """
-                    SELECT * FROM content_queue 
-                    WHERE status = 'queued'
-                      AND (scheduled_for IS NULL OR scheduled_for <= date('now'))
-                    ORDER BY
-                        CASE
-                            WHEN content_type IN ('tier3', 'newsjack', 'tier3_newsjack') THEN 1
-                            WHEN rank_position BETWEEN 8 AND 20 THEN 2
-                            WHEN zero_coverage = 1 THEN 3
-                            WHEN content_type LIKE '%pillar%' THEN 4
-                            WHEN content_type IN ('tier2', 'supporting_cluster') THEN 5
-                            WHEN content_type LIKE '%refresh%' THEN 6
-                            ELSE 7
-                        END ASC,
-                        priority_score DESC,
-                        id ASC
-                    LIMIT 1
-                    """
-                ).fetchone()
+                row = conn.execute(query, params).fetchone()
                 
                 if row:
                     job = _row_to_dict(row)

@@ -271,8 +271,14 @@ async def auth_submit(auth_key: str = Form(...)) -> JSONResponse:
         value=_VALID_TOKEN,
         httponly=True,
         samesite="lax",
-        max_age=60 * 60 * 24 * 30,  # 30 days
     )
+    return response
+
+
+@app.get("/auth/logout")
+async def auth_logout() -> RedirectResponse:
+    response = RedirectResponse(url="/auth/login", status_code=302)
+    response.delete_cookie(_AUTH_COOKIE)
     return response
 
 

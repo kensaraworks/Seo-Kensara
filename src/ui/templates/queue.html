@@ -46,6 +46,38 @@
         {% if item.meta_description %}
         <div style="font-size:12px;color:#6b7280;margin-top:7px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">{{ item.meta_description }}</div>
         {% endif %}
+
+        {% if item.type == 'blog' %}
+        <div class="mt-4 flex flex-col gap-2 p-3 rounded-lg border border-slate-200 bg-slate-50/50 max-w-xl">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Blog Cover Banner</span>
+          <div class="flex items-center gap-4">
+            <div id="preview-container-{{ row_id }}" class="relative w-24 h-14 rounded-md overflow-hidden border border-slate-200 bg-slate-200 flex-shrink-0 flex items-center justify-center shadow-sm">
+              {% if item.image_url %}
+              <img id="banner-img-{{ row_id }}" src="{{ item.image_url }}" class="object-cover w-full h-full" alt="Banner Preview">
+              {% else %}
+              <div id="banner-placeholder-{{ row_id }}" class="text-[10px] text-slate-500 text-center font-semibold">No Banner</div>
+              {% endif %}
+            </div>
+            <div class="flex-1 min-w-0">
+              <input type="text" id="banner-url-{{ row_id }}" class="w-full text-xs bg-white border border-slate-300 rounded px-2.5 py-1 text-slate-800 outline-none focus:border-indigo-500/50 shadow-inner" 
+                     placeholder="Image URL or upload file below..." value="{{ item.image_url or '' }}" onchange="updateBannerUrl('{{ item.folder }}', '{{ item.filename }}', '{{ row_id }}')">
+              
+              <div id="banner-actions-{{ row_id }}" class="mt-2 flex items-center gap-2">
+                <label class="btn btn-ghost btn-sm py-0.5 px-2 text-[11px] cursor-pointer inline-flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 border-slate-300 text-slate-700">
+                  <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                  </svg>
+                  Upload Banner File
+                  <input type="file" accept="image/*" class="hidden" onchange="uploadBannerFile(this, '{{ item.folder }}', '{{ item.filename }}', '{{ row_id }}')">
+                </label>
+                {% if item.image_url %}
+                <button class="clear-btn btn btn-danger btn-sm py-0.5 px-2 text-[11px]" onclick="clearBanner('{{ item.folder }}', '{{ item.filename }}', '{{ row_id }}')">Clear</button>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
       </div>
 
       <!-- Actions -->
@@ -116,4 +148,86 @@
 {% endif %}
 
 </div>
+
+<script>
+function uploadBannerFile(fileInput, folder, filename, rowId) {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const urlInput = document.getElementById('banner-url-' + rowId);
+  showToast('Uploading banner image...', 'info');
+
+  fetch('/queue/upload-banner/' + folder + '/' + filename, {
+    method: 'POST',
+    body: formData
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      showToast('Banner uploaded successfully!', 'success');
+      urlInput.value = d.image_url;
+      const container = document.getElementById('preview-container-' + rowId);
+      container.innerHTML = `<img id="banner-img-${rowId}" src="${d.image_url}" class="object-cover w-full h-full" alt="Banner Preview">`;
+      ensureClearButton(folder, filename, rowId, true);
+    } else {
+      showToast('Upload failed: ' + d.error, 'error');
+    }
+  })
+  .catch(() => showToast('Network error during upload', 'error'));
+}
+
+function updateBannerUrl(folder, filename, rowId) {
+  const urlInput = document.getElementById('banner-url-' + rowId);
+  const image_url = urlInput.value.trim();
+
+  const formData = new FormData();
+  formData.append('image_url', image_url);
+
+  fetch('/queue/update-banner-url/' + folder + '/' + filename, {
+    method: 'POST',
+    body: formData
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      showToast('Banner URL updated', 'success');
+      const container = document.getElementById('preview-container-' + rowId);
+      if (image_url) {
+        container.innerHTML = `<img id="banner-img-${rowId}" src="${image_url}" class="object-cover w-full h-full" alt="Banner Preview">`;
+        ensureClearButton(folder, filename, rowId, true);
+      } else {
+        container.innerHTML = `<div id="banner-placeholder-${rowId}" class="text-[10px] text-slate-500 text-center font-semibold">No Banner</div>`;
+        ensureClearButton(folder, filename, rowId, false);
+      }
+    } else {
+      showToast('Failed to update URL: ' + d.error, 'error');
+    }
+  })
+  .catch(() => showToast('Network error updating URL', 'error'));
+}
+
+function clearBanner(folder, filename, rowId) {
+  const urlInput = document.getElementById('banner-url-' + rowId);
+  urlInput.value = '';
+  updateBannerUrl(folder, filename, rowId);
+}
+
+function ensureClearButton(folder, filename, rowId, show) {
+  const actionsContainer = document.getElementById('banner-actions-' + rowId);
+  if (!actionsContainer) return;
+  const existingClear = actionsContainer.querySelector('.clear-btn');
+  if (show && !existingClear) {
+    const btn = document.createElement('button');
+    btn.className = 'clear-btn btn btn-danger btn-sm py-0.5 px-2 text-[11px]';
+    btn.textContent = 'Clear';
+    btn.onclick = () => clearBanner(folder, filename, rowId);
+    actionsContainer.appendChild(btn);
+  } else if (!show && existingClear) {
+    existingClear.remove();
+  }
+}
+</script>
 {% endblock %}
