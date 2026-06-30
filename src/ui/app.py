@@ -54,7 +54,7 @@ log = structlog.get_logger()
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 _AUTH_KEY = "COO@Kensara"
-_AUTH_COOKIE = "kensara_session"
+_AUTH_COOKIE = "kensara_auth_session_v2"
 # Cookie value is the SHA-256 of the auth key — no server-side storage needed.
 _VALID_TOKEN = hashlib.sha256(_AUTH_KEY.encode()).hexdigest()
 
