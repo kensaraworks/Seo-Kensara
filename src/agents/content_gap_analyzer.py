@@ -27,14 +27,14 @@ log = structlog.get_logger()
 COMPETITOR_DOMAINS = [
     "securiti.ai",
     "cookieyes.com",
-    "ampcuscyber.com",
     "trustarc.com",
     "dpdpa.com",
-    "skynettechnologies.com",
     "onetrust.com",
     "deloitte.com/in",
-    "seqrite.com",
-    "pwc.com/in"
+    "pwc.com/in",
+    "tsaaro.com",
+    "tcs.com",
+    "dutient.ai"
 ]
 
 CORE_KEYWORDS = [

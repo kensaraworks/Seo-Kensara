@@ -518,7 +518,10 @@
       <span>AI Generation Workflow</span>
       <button id="workflow-close-btn" onclick="closeWorkflowModal()" style="display:none;background:none;border:none;color:#a5b4fc;cursor:pointer;font-size:13px;font-weight:600;">Close & View Draft</button>
     </div>
-    <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:24px;">Synthesizing SEO Asset <span style="color:#4ade80;font-weight:600;margin-left:4px;">(Estimated Value: 4 hours of manual labor saved)</span></div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:24px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+      <span>Synthesizing SEO Asset <span style="color:#4ade80;font-weight:600;margin-left:4px;">(Saved: 4 hours)</span></span>
+      <span id="workflow-timer" style="color:#fbbf24;font-weight:600;font-family:monospace;white-space:nowrap;">Est. Time: 120s</span>
+    </div>
     
     <div id="workflow-steps" style="display:flex;flex-direction:column;gap:12px;">
       <!-- Steps injected via JS -->
@@ -632,6 +635,23 @@ function startBlogGenerationWorkflow(keyword = '') {
   const stepsContainer = document.getElementById('workflow-steps');
   stepsContainer.innerHTML = '';
   
+  // Set up the countdown timer (approx 120s expected duration)
+  let timeLeft = 120;
+  const timerEl = document.getElementById('workflow-timer');
+  timerEl.textContent = `Est. Time: ${timeLeft}s`;
+  timerEl.style.color = '#fbbf24';
+  
+  const timerInterval = setInterval(() => {
+    timeLeft--;
+    if (timeLeft > 0) {
+      timerEl.textContent = `Est. Time: ${timeLeft}s`;
+    } else {
+      timerEl.textContent = "Wrapping up...";
+      timerEl.style.color = '#a5b4fc';
+      clearInterval(timerInterval);
+    }
+  }, 1000);
+
   // Pre-fill 11 steps
   for(let i=1; i<=11; i++) {
     const stepEl = document.createElement('div');
@@ -654,6 +674,9 @@ function startBlogGenerationWorkflow(keyword = '') {
   eventSource.onmessage = function(e) {
     const data = JSON.parse(e.data);
     if(data.error) {
+       clearInterval(timerInterval);
+       timerEl.textContent = "Failed";
+       timerEl.style.color = '#ef4444';
        showToast("Error: " + data.error, "error");
        document.getElementById('workflow-close-btn').style.display = 'block';
        eventSource.close();
@@ -689,15 +712,25 @@ function startBlogGenerationWorkflow(keyword = '') {
     }
     
     if(step === 11 && msg.includes("Saving to Drafts Queue")) {
+       clearInterval(timerInterval);
+       timerEl.textContent = "Completed!";
+       timerEl.style.color = '#22c55e';
        // Done
        document.getElementById('workflow-step-11').querySelector('.step-icon').innerHTML = '✓';
        document.getElementById('workflow-step-11').querySelector('.step-icon').style.background = '#22c55e';
        showToast("Blog successfully generated!", "success");
-       document.getElementById('workflow-close-btn').style.display = 'block';
+       
+       // Automatically close and view draft after 1.5 seconds
+       setTimeout(() => {
+         closeWorkflowModal();
+       }, 1500);
        eventSource.close();
     }
   };
   eventSource.onerror = function() {
+    clearInterval(timerInterval);
+    timerEl.textContent = "Error";
+    timerEl.style.color = '#ef4444';
     eventSource.close();
     document.getElementById('workflow-close-btn').style.display = 'block';
   };

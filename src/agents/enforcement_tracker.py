@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import structlog
+from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel
 
 from src.config import settings
@@ -15,6 +16,7 @@ from src.config import settings
 log = structlog.get_logger()
 
 TRACKER_PATH = Path("data/enforcement_tracker.json")
+TEMPLATES_DIR = Path("src/ui/templates")
 
 # Search queries sent to Tavily to find new enforcement actions
 ENFORCEMENT_SEARCH_QUERIES = [
@@ -82,6 +84,107 @@ def _save_tracker(data: dict[str, Any]) -> None:
     with TRACKER_PATH.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     log.info("enforcement_tracker_saved", path=str(TRACKER_PATH))
+
+
+def _render_enforcement_tracker_html(tracker_data: dict[str, Any]) -> str:
+    """Render the enforcement tracker HTML template into a full page string."""
+    metadata = tracker_data.get("metadata", {})
+    last_updated = metadata.get("last_updated", "")
+    try:
+        last_updated_dt = datetime.strptime(last_updated, "%Y-%m-%d")
+        last_updated_formatted = last_updated_dt.strftime("%d %B %Y")
+    except ValueError:
+        last_updated_formatted = last_updated or "Unknown"
+
+    stats = tracker_data.get("statistics", {})
+    by_sector = stats.get("by_sector", {})
+    social_tech = by_sector.get("Social Media / Tech", 0) + by_sector.get("Regulatory", 0)
+    healthcare = by_sector.get("Insurance / Healthcare", 0) + by_sector.get("Healthcare", 0)
+    fintech = by_sector.get("Payments / Fintech", 0) + by_sector.get("Fintech", 0) + by_sector.get("Banking / Payments", 0)
+    gov = by_sector.get("Government", 0)
+    other_sectors = sum(
+        v
+        for k, v in by_sector.items()
+        if k not in {
+            "Social Media / Tech",
+            "Regulatory",
+            "Insurance / Healthcare",
+            "Healthcare",
+            "Payments / Fintech",
+            "Fintech",
+            "Banking / Payments",
+            "Government",
+        }
+    )
+
+    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
+    return env.get_template("enforcement_tracker.html").render(
+        enforcement_actions=tracker_data.get("enforcement_actions", []),
+        cert_in_enforcement=tracker_data.get("cert_in_enforcement", []),
+        pre_dpdpa_actions=tracker_data.get("pre_dpdpa_actions", []),
+        stats=stats,
+        last_updated_formatted=last_updated_formatted,
+        social_tech_count=social_tech,
+        healthcare_count=healthcare,
+        fintech_count=fintech,
+        gov_count=gov,
+        other_sectors_count=other_sectors,
+    )
+
+
+def build_wordpress_page_payload(tracker_data: dict[str, Any], slug: str | None = None) -> dict[str, Any]:
+    """Build the payload used to create or update the enforcement tracker page on WordPress."""
+    page_slug = slug or "enforcement-tracker"
+    return {
+        "title": "DPDPA Enforcement Tracker India",
+        "content": _render_enforcement_tracker_html(tracker_data),
+        "slug": page_slug,
+        "status": "publish",
+    }
+
+
+async def _sync_wordpress_enforcement_page(tracker_data: dict[str, Any]) -> dict[str, Any]:
+    """Publish or update the enforcement tracker page on WordPress via the REST API."""
+    if not settings.wordpress_user or not settings.wordpress_app_password:
+        return {"status": "skipped", "reason": "wordpress_credentials_not_configured"}
+
+    slug = getattr(settings, "wordpress_enforcement_tracker_slug", "enforcement-tracker")
+    payload = build_wordpress_page_payload(tracker_data, slug=slug)
+    base_url = settings.wordpress_url.rstrip("/")
+    endpoint = f"{base_url}/wp-json/wp/v2/pages"
+
+    async with httpx.AsyncClient(timeout=30.0, auth=httpx.BasicAuth(settings.wordpress_user, settings.wordpress_app_password)) as client:
+        lookup_resp = await client.get(f"{endpoint}?slug={slug}&per_page=1")
+        if lookup_resp.status_code >= 400:
+            return {
+                "status": "error",
+                "reason": "wordpress_lookup_failed",
+                "status_code": lookup_resp.status_code,
+                "detail": lookup_resp.text,
+            }
+
+        existing_pages = lookup_resp.json()
+        if existing_pages:
+            page_id = existing_pages[0].get("id")
+            resp = await client.post(f"{endpoint}/{page_id}", json=payload)
+        else:
+            resp = await client.post(endpoint, json=payload)
+
+        if resp.status_code >= 400:
+            return {
+                "status": "error",
+                "reason": "wordpress_publish_failed",
+                "status_code": resp.status_code,
+                "detail": resp.text,
+            }
+
+        page_data = resp.json()
+        return {
+            "status": "synced",
+            "page_id": page_data.get("id"),
+            "slug": page_data.get("slug"),
+            "url": page_data.get("link"),
+        }
 
 
 def _collect_all_source_urls(tracker_data: dict[str, Any]) -> set[str]:
@@ -399,6 +502,8 @@ async def update_enforcement_tracker() -> dict[str, Any]:
     _recalculate_statistics(tracker_data)
     _save_tracker(tracker_data)
 
+    wordpress_sync = await _sync_wordpress_enforcement_page(tracker_data)
+
     summary = {
         "queries_run": len(ENFORCEMENT_SEARCH_QUERIES),
         "candidates_found": candidates_found,
@@ -408,6 +513,7 @@ async def update_enforcement_tracker() -> dict[str, Any]:
         "needs_ceo_review": len(new_actions_added) > 0,
         "tracker_path": str(TRACKER_PATH),
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "wordpress_sync": wordpress_sync,
     }
 
     log.info(

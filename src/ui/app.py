@@ -62,8 +62,8 @@ _VALID_TOKEN = hashlib.sha256(_AUTH_KEY.encode()).hexdigest()
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        # Allow the login page and all static assets through unauthenticated
-        if path == "/auth/login" or path.startswith("/static"):
+        # Allow the login page, static assets, and the public enforcement tracker through unauthenticated
+        if path == "/auth/login" or path == "/enforcement-tracker.html" or path.startswith("/static"):
             return await call_next(request)
         token = request.cookies.get(_AUTH_COOKIE)
         if token != _VALID_TOKEN:

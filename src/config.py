@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     wordpress_url: str = Field("https://kensara.in", env="WORDPRESS_URL")
     wordpress_user: str = Field("", env="WORDPRESS_USER")
     wordpress_app_password: str = Field("", env="WORDPRESS_APP_PASSWORD")
+    wordpress_enforcement_tracker_slug: str = Field("enforcement-tracker", env="WORDPRESS_ENFORCEMENT_TRACKER_SLUG")
 
     # LinkedIn
     linkedin_access_token: str = Field("", env="LINKEDIN_ACCESS_TOKEN")
