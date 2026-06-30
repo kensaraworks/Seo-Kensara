@@ -416,6 +416,7 @@
       const data = await res.json();
 
       if (data.ok) {
+        sessionStorage.setItem('kensara_session_active', 'true');
         btn.style.background = '#059669';
         btn.style.boxShadow = '0 4px 16px rgba(5,150,105,0.35)';
         btn.innerHTML = `<svg class="check-anim" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Access Granted`;
@@ -436,8 +437,9 @@
     }
   }
 
-  // Auto-focus on load
+  // Auto-focus and clear session on load
   document.addEventListener('DOMContentLoaded', () => {
+    sessionStorage.removeItem('kensara_session_active');
     document.getElementById('auth-key').focus();
   });
 </script>
