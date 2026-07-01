@@ -11,11 +11,11 @@ import structlog
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel
 
-from src.config import settings
+from src.config import settings, settings_enforcement_tracker_path
 
 log = structlog.get_logger()
 
-TRACKER_PATH = Path("data/enforcement_tracker.json")
+TRACKER_PATH = Path(settings_enforcement_tracker_path)
 TEMPLATES_DIR = Path("src/ui/templates")
 
 # Search queries sent to Tavily to find new enforcement actions

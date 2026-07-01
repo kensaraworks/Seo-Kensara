@@ -269,7 +269,10 @@ class JobStatus(str, Enum):
 class JobQueue:
     """SQLite-backed persistent job queue."""
 
-    def __init__(self, db_path: str = "drafts/.cache/jobs.db") -> None:
+    def __init__(self, db_path: str | None = None) -> None:
+        if db_path is None:
+            from src.config import settings_database_path
+            db_path = settings_database_path
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()

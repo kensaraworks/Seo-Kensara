@@ -505,9 +505,13 @@ class SearchConsoleClient:
         ]
 
 
-def init_gsc_tables(db_path: str = "drafts/.cache/jobs.db") -> None:
+def init_gsc_tables(db_path: str | None = None) -> None:
     """Create query-performance table used by dashboard widgets and weekly sync."""
     import sqlite3
+    if db_path is None:
+        from src.config import settings_database_path
+        db_path = settings_database_path
+
 
     conn = sqlite3.connect(db_path)
     conn.execute(

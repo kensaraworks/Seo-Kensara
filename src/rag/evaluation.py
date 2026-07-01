@@ -6,7 +6,8 @@ from typing import List, Dict, Any, Tuple
 from src.rag.chroma_client import get_or_create_collection, COLLECTION_NAMES
 from src.rag.bm25_utils import load_bm25_index
 
-DB_PATH = os.path.join("drafts", ".cache", "jobs.db")
+from src.config import settings_database_path
+DB_PATH = settings_database_path
 
 def _get_db_connection():
     """Helper to get SQLite connection to the jobs db."""

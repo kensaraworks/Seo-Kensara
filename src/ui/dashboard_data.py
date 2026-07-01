@@ -12,14 +12,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import structlog
+from src.config import settings, settings_database_path, settings_enforcement_tracker_path
 
 log = structlog.get_logger()
 
-_DB_PATH = Path("drafts/.cache/jobs.db")
-_REPORTS_DIR = Path("drafts/reports")
+_DB_PATH = Path(settings_database_path)
+_REPORTS_DIR = Path(settings.content_output_dir) / "reports"
 _RANKINGS_DIR = _REPORTS_DIR / "rankings"
-_ENFORCEMENT_TRACKER = Path("data/enforcement_tracker.json")
+_ENFORCEMENT_TRACKER = Path(settings_enforcement_tracker_path)
 _MONDAY_BRIEF = _REPORTS_DIR / "monday-brief.json"
 
 

@@ -2,8 +2,8 @@ import logging
 import sqlite3
 from datetime import date, timedelta
 
-logger = logging.getLogger(__name__)
-DB_PATH = "drafts/.cache/jobs.db"
+from src.config import settings_database_path
+DB_PATH = settings_database_path
 
 
 def get_high_impression_low_ctr_queries(

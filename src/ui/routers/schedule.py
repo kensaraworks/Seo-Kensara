@@ -345,7 +345,8 @@ async def _dispatch_job(job_id: str) -> dict:
     """Import and run the relevant agent function for the job."""
 
     def _sync_page_summaries_to_content_performance(page_summaries: list) -> int:
-        db_path = Path("drafts/.cache/jobs.db")
+        from src.config import settings_database_path
+        db_path = Path(settings_database_path)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(db_path))
         try:

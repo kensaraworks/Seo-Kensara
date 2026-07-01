@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     supabase_url: str = Field("", env="SUPABASE_URL")
     supabase_service_key: str = Field("", env="SUPABASE_SERVICE_KEY")
 
+    # Storage configuration (Azure Persistence)
+    # On local, defaults to current directory (".").
+    # On Azure, set DATA_DIR to "/home/kensara_data" to survive redeployments.
+    data_dir: str = Field(".", env="DATA_DIR")
+
     # Content
     content_output_dir: str = Field("drafts", env="CONTENT_OUTPUT_DIR")
     blog_cadence: str = Field("daily", env="BLOG_CADENCE")  # daily | weekly
@@ -78,3 +83,33 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# ── Dynamic Persistence Resolution ───────────────────────────────────────────
+from pathlib import Path
+import shutil
+
+persistent_base = Path(settings.data_dir).resolve()
+
+# Update content_output_dir to point to persistent directory
+settings.content_output_dir = str(persistent_base / "drafts")
+
+# Ensure all subdirectories inside drafts exist
+for sub in ("blogs", "linkedin", "newsletters", "reports", ".cache"):
+    Path(settings.content_output_dir, sub).mkdir(parents=True, exist_ok=True)
+
+# Centralize database path
+settings_database_path = str(Path(settings.content_output_dir) / ".cache" / "jobs.db")
+
+# Setup persistent enforcement tracker path
+tracker_dir = persistent_base / "data"
+tracker_dir.mkdir(parents=True, exist_ok=True)
+settings_enforcement_tracker_path = str(tracker_dir / "enforcement_tracker.json")
+
+# Seed/copy default enforcement tracker if not present
+if not Path(settings_enforcement_tracker_path).exists():
+    default_tr = Path("data/enforcement_tracker.json")
+    if default_tr.exists():
+        shutil.copy(default_tr, settings_enforcement_tracker_path)
+    else:
+        Path(settings_enforcement_tracker_path).write_text("{}", encoding="utf-8")
+
