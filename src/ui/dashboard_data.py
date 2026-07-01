@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import structlog
 from src.config import settings, settings_database_path, settings_enforcement_tracker_path
 
 log = structlog.get_logger()
