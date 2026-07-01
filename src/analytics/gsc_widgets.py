@@ -2,6 +2,7 @@ import logging
 import sqlite3
 from datetime import date, timedelta
 
+logger = logging.getLogger(__name__)
 from src.config import settings_database_path
 DB_PATH = settings_database_path
 

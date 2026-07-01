@@ -495,10 +495,10 @@ def main() -> None:
         name="Daily blog generation",
     )
 
-    # Periodic regulatory poll every 4 hours
+    # Periodic regulatory poll every 10 hours
     scheduler.add_job(
         run_regulatory_poll,
-        CronTrigger(hour="*/4", minute=0),
+        CronTrigger(hour="*/10", minute=0),
         id="regulatory_poll",
         name="Regulatory feed poll",
     )

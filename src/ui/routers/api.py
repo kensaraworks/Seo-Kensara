@@ -107,58 +107,214 @@ async def trigger_generation(req: GenerateRequest, background_tasks: BackgroundT
 
 @router.get("/health/llms")
 async def check_llm_health():
-    """Diagnose LLM connections (NVIDIA, Groq, Tavily)."""
+    """Diagnose all integration connections (NVIDIA, Groq, Tavily, Serper, Perplexity, AllToken, Gemini, Supabase, WordPress, Mailchimp, GSC)."""
+    from src.config import settings
+    from src.analytics.search_console import gsc_client
+    import base64
+    import asyncio
+    
     results = {}
     
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        # Check NVIDIA
-        nvidia_key = os.getenv("NVIDIA_API_KEY")
-        if not nvidia_key:
-            results["nvidia"] = {"status": "missing_key", "latency_ms": 0}
-        else:
-            try:
-                start = datetime.now()
-                resp = await client.get("https://integrate.api.nvidia.com/v1/models", headers={"Authorization": f"Bearer {nvidia_key}"})
-                latency = int((datetime.now() - start).total_seconds() * 1000)
-                if resp.status_code == 200:
-                    results["nvidia"] = {"status": "ok", "latency_ms": latency}
-                else:
-                    results["nvidia"] = {"status": "error", "message": resp.text, "latency_ms": latency}
-            except Exception as e:
-                results["nvidia"] = {"status": "error", "message": str(e), "latency_ms": 0}
+    async def check_nvidia(client):
+        key = os.getenv("NVIDIA_API_KEY")
+        if not key or key == "replace_me":
+            return "nvidia", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            resp = await client.get("https://integrate.api.nvidia.com/v1/models", headers={"Authorization": f"Bearer {key}"})
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "nvidia", {"status": "ok", "latency_ms": latency}
+            return "nvidia", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "nvidia", {"status": "error", "message": str(e), "latency_ms": 0}
 
-        # Check Groq
-        groq_key = os.getenv("GROQ_API_KEY")
-        if not groq_key:
-            results["groq"] = {"status": "missing_key", "latency_ms": 0}
-        else:
-            try:
-                start = datetime.now()
-                resp = await client.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {groq_key}"})
-                latency = int((datetime.now() - start).total_seconds() * 1000)
-                if resp.status_code == 200:
-                    results["groq"] = {"status": "ok", "latency_ms": latency}
-                else:
-                    results["groq"] = {"status": "error", "message": resp.text, "latency_ms": latency}
-            except Exception as e:
-                results["groq"] = {"status": "error", "message": str(e), "latency_ms": 0}
-                
-        # Check Tavily
-        tavily_key = os.getenv("TAVILY_API_KEY")
-        if not tavily_key:
-            results["tavily"] = {"status": "missing_key", "latency_ms": 0}
-        else:
-            try:
-                start = datetime.now()
-                resp = await client.post("https://api.tavily.com/search", json={"api_key": tavily_key, "query": "test", "include_answer": False, "max_results": 1})
-                latency = int((datetime.now() - start).total_seconds() * 1000)
-                if resp.status_code == 200:
-                    results["tavily"] = {"status": "ok", "latency_ms": latency}
-                else:
-                    results["tavily"] = {"status": "error", "message": resp.text, "latency_ms": latency}
-            except Exception as e:
-                results["tavily"] = {"status": "error", "message": str(e), "latency_ms": 0}
-                
+    async def check_groq(client):
+        key = os.getenv("GROQ_API_KEY")
+        if not key or key == "replace_me":
+            return "groq", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            resp = await client.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {key}"})
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "groq", {"status": "ok", "latency_ms": latency}
+            return "groq", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "groq", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_tavily(client):
+        key = os.getenv("TAVILY_API_KEY")
+        if not key or key == "replace_me":
+            return "tavily", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            resp = await client.post("https://api.tavily.com/search", json={"api_key": key, "query": "test", "include_answer": False, "max_results": 1})
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "tavily", {"status": "ok", "latency_ms": latency}
+            return "tavily", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "tavily", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_serper(client):
+        key = os.getenv("SERPER_API_KEY")
+        if not key or key == "replace_me":
+            return "serper", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            resp = await client.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": key, "Content-Type": "application/json"},
+                json={"q": "test", "num": 1}
+            )
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "serper", {"status": "ok", "latency_ms": latency}
+            return "serper", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "serper", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_perplexity(client):
+        key = os.getenv("PERPLEXITY_API_KEY")
+        if not key or key == "replace_me":
+            return "perplexity", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            resp = await client.post(
+                "https://api.perplexity.ai/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "sonar", "messages": [{"role": "user", "content": "health check"}], "max_tokens": 1}
+            )
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "perplexity", {"status": "ok", "latency_ms": latency}
+            return "perplexity", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "perplexity", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_alltoken(client):
+        key = os.getenv("ALLTOKEN_API_KEY")
+        if not key or key == "replace_me":
+            return "alltoken", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            resp = await client.get(f"{settings.alltoken_base_url.rstrip('/')}/models", headers={"Authorization": f"Bearer {key}"})
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "alltoken", {"status": "ok", "latency_ms": latency}
+            return "alltoken", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "alltoken", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_gemini(client):
+        key = os.getenv("GEMINI_API_KEY")
+        if not key or key == "replace_me":
+            return "gemini", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            resp = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={key}")
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "gemini", {"status": "ok", "latency_ms": latency}
+            return "gemini", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "gemini", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_supabase(client):
+        url = getattr(settings, "supabase_url", "")
+        key = getattr(settings, "supabase_service_key", "")
+        if not url or not key or url == "replace_me" or key == "replace_me":
+            return "supabase", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            url_clean = url.rstrip("/")
+            if "/rest/v1" in url_clean:
+                url_clean = url_clean.split("/rest/v1")[0].rstrip("/")
+            resp = await client.get(f"{url_clean}/rest/v1/blogs?limit=1", headers={
+                "apikey": key,
+                "Authorization": f"Bearer {key}"
+            })
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code in (200, 204):
+                return "supabase", {"status": "ok", "latency_ms": latency}
+            return "supabase", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "supabase", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_wordpress(client):
+        url = getattr(settings, "wordpress_url", "")
+        if not url or url == "replace_me":
+            return "wordpress", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            target = f"{url.rstrip('/')}/wp-json/wp/v2/posts?per_page=1"
+            headers = {}
+            user = getattr(settings, "wordpress_user", "")
+            pw = getattr(settings, "wordpress_app_password", "")
+            if user and pw and user != "replace_me" and pw != "replace_me":
+                auth_str = f"{user}:{pw}"
+                encoded = base64.b64encode(auth_str.encode()).decode()
+                headers["Authorization"] = f"Basic {encoded}"
+            resp = await client.get(target, headers=headers)
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "wordpress", {"status": "ok", "latency_ms": latency}
+            return "wordpress", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "wordpress", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_mailchimp(client):
+        key = getattr(settings, "mailchimp_api_key", "")
+        if not key or key == "replace_me":
+            return "mailchimp", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            dc = "us1"
+            if "-" in key:
+                dc = key.split("-")[-1]
+            url = f"https://{dc}.api.mailchimp.com/3.0/ping"
+            auth_str = f"user:{key}"
+            encoded = base64.b64encode(auth_str.encode()).decode()
+            resp = await client.get(url, headers={"Authorization": f"Basic {encoded}"})
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if resp.status_code == 200:
+                return "mailchimp", {"status": "ok", "latency_ms": latency}
+            return "mailchimp", {"status": "error", "message": f"HTTP {resp.status_code}", "latency_ms": latency}
+        except Exception as e:
+            return "mailchimp", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async def check_gsc(client):
+        if not gsc_client.is_configured():
+            return "gsc", {"status": "missing_key", "latency_ms": 0}
+        try:
+            start = datetime.now()
+            v = gsc_client.verify_connection()
+            latency = int((datetime.now() - start).total_seconds() * 1000)
+            if v.get("success"):
+                return "gsc", {"status": "ok", "latency_ms": latency}
+            return "gsc", {"status": "error", "message": v.get("error", "Failed"), "latency_ms": latency}
+        except Exception as e:
+            return "gsc", {"status": "error", "message": str(e), "latency_ms": 0}
+
+    async with httpx.AsyncClient(timeout=6.0) as client:
+        tasks = [
+            check_nvidia(client),
+            check_groq(client),
+            check_tavily(client),
+            check_serper(client),
+            check_perplexity(client),
+            check_alltoken(client),
+            check_gemini(client),
+            check_supabase(client),
+            check_wordpress(client),
+            check_mailchimp(client),
+            check_gsc(client),
+        ]
+        outputs = await asyncio.gather(*tasks)
+        for key, val in outputs:
+            results[key] = val
+            
     return results
 
 @router.get("/health/full")

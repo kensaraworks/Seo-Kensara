@@ -24,7 +24,7 @@
       </div>
 
       <!-- API health cards -->
-      <div id="health-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+      <div id="health-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:12px;margin-bottom:18px;">
         <div class="stat-card" style="padding:14px;">
           <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">NVIDIA NIM API</div>
           <div id="health-nvidia" style="display:flex;align-items:center;gap:6px;">
@@ -45,6 +45,62 @@
             <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
           </div>
           <div style="font-size:11px;color:#94a3b8;margin-top:5px;">News supplementation layer</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Serper Google API</div>
+          <div id="health-serper" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">Rankings & competitor research</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Supabase DB API</div>
+          <div id="health-supabase" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">Blog publishing destination</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">WordPress API</div>
+          <div id="health-wordpress" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">kensara.in Canonical sync</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Mailchimp API</div>
+          <div id="health-mailchimp" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">Newsletter list automation</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Search Console API</div>
+          <div id="health-gsc" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">GSC index & query metrics</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Gemini API</div>
+          <div id="health-gemini" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">GEO citation monitoring layer</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Perplexity API</div>
+          <div id="health-perplexity" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">Citations & source checks</div>
+        </div>
+        <div class="stat-card" style="padding:14px;">
+          <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">AllToken API</div>
+          <div id="health-alltoken" style="display:flex;align-items:center;gap:6px;">
+            <span class="loading-text" style="width:80px;height:12px;display:block;"></span>
+          </div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:5px;">Fallback translation/LLM API</div>
         </div>
       </div>
 
@@ -215,13 +271,15 @@
 {% block extra_scripts %}
 <script>
 // ── Health check ──────────────────────────────────────────────────────────────
+const apiList = ['nvidia','groq','tavily','serper','supabase','wordpress','mailchimp','gsc','gemini','perplexity','alltoken'];
+
 function checkHealth() {
-  ['nvidia','groq','tavily'].forEach(id => {
+  apiList.forEach(id => {
     document.getElementById('health-'+id).innerHTML =
       '<span class="loading-text" style="width:80px;height:12px;display:block;"></span>';
   });
   fetch('/api/v1/health/llms').then(r=>r.json()).then(data=>{
-    ['nvidia','groq','tavily'].forEach(id => {
+    apiList.forEach(id => {
       const d = data[id];
       const el = document.getElementById('health-'+id);
       if (!d) { el.innerHTML = dot('red') + label('Offline','#ef4444'); return; }
@@ -230,11 +288,11 @@ function checkHealth() {
       } else if (d.status === 'missing_key') {
         el.innerHTML = dot('amber') + label('No API key','#d97706');
       } else {
-        el.innerHTML = dot('red') + label(d.error||'Error','#dc2626');
+        el.innerHTML = dot('red') + label(d.message||'Error','#dc2626');
       }
     });
   }).catch(()=>{
-    ['nvidia','groq','tavily'].forEach(id => {
+    apiList.forEach(id => {
       document.getElementById('health-'+id).innerHTML = dot('red') + label('Network error','#dc2626');
     });
   });
