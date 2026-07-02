@@ -414,8 +414,8 @@ _OUTLINE_SCHEMA = """{
     }
   ],
   "faq_section": {
-    "include": true,
-    "questions": ["string — exact PAA phrasing where possible"]
+    "include": "boolean — set to false if no topic-relevant questions are available. Do NOT include generic FAQs.",
+    "questions": ["string — exact PAA phrasing where possible. MUST be highly topic-specific. Do NOT include generic definitions like 'What is DPDPA?', 'What are the penalties?', 'Who is a Data Fiduciary?', 'Is DPDPA active?'"]
   },
   "cta_section": {
     "heading": "string",
@@ -474,8 +474,9 @@ MANDATORY OUTLINE RULES — ALL MUST BE FOLLOWED:
 6. section_type values MUST be one of: answer_block, regulatory_explainer, how_to, comparison_table, case_study, faq_block, cta_section.
 7. The final content section MUST be section_type="cta_section".
 8. All target_words values must sum within 10% of {target_words}.
-9. faq_section.questions MUST use exact PAA phrasing from context where available.
+9. faq_section.questions MUST use exact PAA phrasing from context where available. MUST be highly specific to the primary keyword. BANNED generic questions: "What is DPDPA?", "What are the penalties under DPDPA?", "Who is a Data Fiduciary?", "Does DPDPA apply to my business?", "Is DPDPA active?".
 10. url_slug MUST be all-lowercase, hyphenated, contain the primary keyword, no stop words (the, and, a, for, of, in).
+11. BANNED: If no highly topic-specific or context-specific PAA questions are available, set faq_section.include to false. Do NOT generate generic regulatory placeholder questions.
 
 OUTPUT: Valid JSON only. No markdown code fences. No explanation text.
 JSON SCHEMA:
@@ -600,7 +601,9 @@ _SECTION_TYPE_RULES: dict = {
         "3-5 questions pulled directly from PAA questions in the context. "
         "Each answer: 40-80 words. "
         "Question format: exact PAA phrasing where possible. "
-        "Format as: ### [Question]\\n\\n[Answer]"
+        "BANNED generic questions: 'What is DPDPA?', 'What are the penalties?', 'Who is a Data Fiduciary?', 'Is DPDPA active?'. "
+        "Questions MUST be highly specific to the context/topic. "
+        "Format as: ### [Question]\n\n[Answer]"
     ),
 }
 
