@@ -60,8 +60,8 @@ def _prepare_stats_db(base: Path) -> None:
         )
         """
     )
-    # Current month matches dynamically (June 2026)
-    current_month_prefix = "2026-06"
+    # Current month matches dynamically
+    current_month_prefix = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m")
     conn.execute(
         "INSERT INTO token_cost_log VALUES (?,?,?,?,?,?,?,?,?)",
         ("job1", "groq", 3000, 2000, 0.003, f"{current_month_prefix}-25T12:00:00Z", 1, "compliance", "section")
