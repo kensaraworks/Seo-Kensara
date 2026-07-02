@@ -46,7 +46,7 @@ TIER_3_TEMPLATE = {
         "H2: What Happened — The Regulatory Development",
         "H2: What This Means for Indian Businesses Under DPDPA",
         "H2: The 3 Immediate Actions You Should Take",
-        "CTA section (short — one sentence + link)"
+        "H2: How Kensara Helps You Respond to This Update — CTA section"
     ],
     "localization_rules": (
         "MEDIUM LOCALIZATION: Reference the specific Indian entity or regulator that issued "

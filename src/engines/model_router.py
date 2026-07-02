@@ -179,7 +179,7 @@ TIER_TOKEN_BUDGET: dict[int, int] = {
     0: 40_000,   # pillar pages
     1: 30_000,   # Tier 1 Regulatory Deep Dive (outline×2retry+sections+assembly+meta ≈ 22-26k)
     2: 12_000,   # Tier 2 Industry Playbook
-    3:  4_000,   # Tier 3 Newsjack
+    3: 12_000,   # Tier 3 Newsjack (increased to 12,000 to accommodate RAG context + retries)
 }
 
 # Approximate pricing in USD per token (not per 1M — stored as per-token for
