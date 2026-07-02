@@ -818,10 +818,13 @@ async def _generate_faq_answers(
         f"Write concise FAQ answers for a DPDPA compliance article about: '{keyword}'\n\n"
         f"QUESTIONS:\n{q_list}\n\n"
         "RULES:\n"
-        "- Each answer: 40-80 words\n"
+        "- Each answer MUST be a complete 40-80 word detailed paragraph.\n"
         "- Include India-specific context (₹ figures, DPDPA section numbers, or regulator names) where relevant\n"
-        "- Format each answer as: ### [Question]\\n\\n[Answer paragraph]\n"
-        "- No preamble, no explanation — output only the ### Q&A pairs"
+        "- Format each Q&A pair as:\n\n"
+        "### [Question]\n\n"
+        "[Full answer paragraph]\n\n"
+        "- MANDATORY: You MUST write the complete answer text under each heading. Do NOT output a bare bullet list of questions without answers.\n"
+        "- No preamble, no explanation — output only the ### Q&A pairs."
     )
     messages = [
         {"role": "system", "content": ANTI_HALLUCINATION_SYSTEM_PROMPT},
@@ -854,13 +857,12 @@ async def _step3_assembly_pass(
     for s in sections:
         raw_text += s["content"].strip() + "\n\n"
 
+    faq_md = ""
     faq = outline.get("faq_section", {})
     if faq.get("include") and faq.get("questions"):
         faq_md = await _generate_faq_answers(router, faq["questions"], keyword)
-        raw_text += faq_md
 
-    # GEO-16: About the author required at bottom of every post
-    raw_text += (
+    about_author_md = (
         "---\n\n"
         "**About the Author**\n\n"
         "This article is published by KensaraAI leadership. Mr Rudraksh Tatwal (Founder & CEO) "
@@ -879,10 +881,8 @@ RULES (DO NOT BREAK ANY):
 6. Ensure H1 → H2 → H3 heading hierarchy is strict (no H4 or H5).
 7. If any section is incoherent with surrounding context, flag it as: [ASSEMBLY_FLAG: description].
 8. The CTA section MUST be the last content section.
-9. The FAQ (Frequently Asked Questions) MUST be the final element.
-10. The About the Author block MUST appear at the very bottom.
-11. Remove any duplicate lines or repeated paragraphs.
-12. OUTPUT RULE: Start your response IMMEDIATELY with the '# ' H1 heading. Do NOT write any preamble, explanation, or acknowledgement before the H1.
+9. Remove any duplicate lines or repeated paragraphs.
+10. OUTPUT RULE: Start your response IMMEDIATELY with the '# ' H1 heading. Do NOT write any preamble, explanation, or acknowledgement before the H1.
 
 DRAFT:
 {raw_text}"""
@@ -892,6 +892,12 @@ DRAFT:
         {"role": "user", "content": prompt},
     ]
     assembled, _ = await router.generate_with_fallback("assembly", messages)
+    assembled = assembled.strip()
+
+    # Programmatically append FAQ and About Author after assembly pass
+    if faq_md:
+        assembled += "\n\n" + faq_md.strip()
+    assembled += "\n\n" + about_author_md.strip() + "\n"
 
     if not assembled or len(assembled.split()) < 100:
         log.warning("step3_empty_response_using_raw")
