@@ -155,6 +155,33 @@ def _enrich_jobs(history: dict) -> list[dict]:
     return enriched
 
 
+def record_job_execution(
+    job_id: str,
+    status: str = "ok",
+    item_count: int = 0,
+    duration_ms: int = 0,
+    error: str = None,
+    triggered_by: str = "auto",
+    latest_news: list = None,
+) -> None:
+    """Record job run timestamp, status, and metrics into job_history.json."""
+    now = datetime.now()
+    history = _load_job_history()
+    h_entry = {
+        "last_run": now.strftime("%Y-%m-%d %H:%M"),
+        "status": status,
+        "item_count": item_count,
+        "duration_ms": duration_ms,
+        "triggered_by": triggered_by,
+    }
+    if error:
+        h_entry["error"] = str(error)[:200]
+    history[job_id] = h_entry
+    if latest_news:
+        history["latest_news"] = latest_news
+    _save_job_history(history)
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("/", response_class=HTMLResponse)
@@ -185,17 +212,14 @@ async def run_job_now(job_id: str) -> JSONResponse:
         result = await _dispatch_job(job_id)
         duration_ms = int((datetime.now() - start).total_seconds() * 1000)
 
-        history = _load_job_history()
-        history[job_id] = {
-            "last_run": start.strftime("%Y-%m-%d %H:%M"),
-            "status": "ok",
-            "item_count": result.get("count", 0),
-            "duration_ms": duration_ms,
-            "triggered_by": "manual",
-        }
-        if "latest_news" in result:
-            history["latest_news"] = result["latest_news"]
-        _save_job_history(history)
+        record_job_execution(
+            job_id=job_id,
+            status="ok",
+            item_count=result.get("count", 0) if isinstance(result, dict) else 1,
+            duration_ms=duration_ms,
+            triggered_by="manual",
+            latest_news=result.get("latest_news") if isinstance(result, dict) else None,
+        )
 
         log.info("manual_job_done", job_id=job_id, duration_ms=duration_ms)
         return JSONResponse(
@@ -208,18 +232,46 @@ async def run_job_now(job_id: str) -> JSONResponse:
         )
     except Exception as exc:
         duration_ms = int((datetime.now() - start).total_seconds() * 1000)
-        history = _load_job_history()
-        history[job_id] = {
-            "last_run": start.strftime("%Y-%m-%d %H:%M"),
-            "status": "error",
-            "item_count": 0,
-            "duration_ms": duration_ms,
-            "error": str(exc)[:200],
-            "triggered_by": "manual",
-        }
-        _save_job_history(history)
+        record_job_execution(
+            job_id=job_id,
+            status="error",
+            duration_ms=duration_ms,
+            error=str(exc),
+            triggered_by="manual",
+        )
         log.error("manual_job_failed", job_id=job_id, error=str(exc))
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+def classify_news_story(title: str, summary: str) -> tuple[str, int]:
+    """Classify a news story to determine the cluster_id and tier."""
+    text = (title + " " + summary).lower()
+    
+    # 1. Determine Cluster
+    if any(k in text for k in ["fintech", "payment", "healthcare", "hospital", "saas", "edtech", "e-commerce", "retail", "bank", "bfsi"]):
+        cluster_id = "industry"
+    elif any(k in text for k in ["penalty", "fine", "court", "judgment", "adjudication", "enforcement", "dpbi", "sued", "order"]):
+        cluster_id = "enforcement"
+    elif any(k in text for k in ["dpo", "audit", "consultant", "consulting", "fractional"]):
+        cluster_id = "dpo-services"
+    elif any(k in text for k in ["consent", "notice", "retention", "log", "security", "breach", "leak", "notification"]):
+        cluster_id = "operations"
+    elif any(k in text for k in ["sdf", "significant", "assessment", "audit obligations"]):
+        cluster_id = "sdf-obligations"
+    elif any(k in text for k in ["erase", "correct", "principal", "right to", "access"]):
+        cluster_id = "data-principal-rights"
+    elif any(k in text for k in ["onetrust", "compare", "alternative", "versus", "vs"]):
+        cluster_id = "compare"
+    else:
+        cluster_id = "fundamentals"
+        
+    # 2. Determine Tier
+    if any(k in text for k in ["rule", "guidance", "penalty", "order", "enforcement", "adjudication", "fine"]):
+        tier = 3
+    else:
+        tier = 2
+        
+    return cluster_id, tier
+
 
 @router.get("/run/blog_generate/stream")
 async def run_blog_generate_stream(request: Request, keyword: str = None):
@@ -267,12 +319,14 @@ async def run_blog_generate_stream(request: Request, keyword: str = None):
                 await cb(4, f"Top story: {scored[0].item.title[:60]}")
 
                 await cb(5, "Selecting this week's target keyword")
+                top_story = scored[0]
                 if keyword:
                     target_keyword = keyword
+                    cluster_id = "general"
+                    tier = 2
                 else:
-                    rotation = _get_keyword_rotation()
-                    week = _date.today().isocalendar()[1]
-                    target_keyword = rotation[week % len(rotation)]
+                    target_keyword = top_story.item.title
+                    cluster_id, tier = classify_news_story(top_story.item.title, top_story.item.summary)
 
                 await cb(6, f"Building keyword brief — {target_keyword[:50]}")
 
@@ -280,7 +334,14 @@ async def run_blog_generate_stream(request: Request, keyword: str = None):
                 # Emit steps 7–10 as timed progress events every 25 s while the
                 # pipeline runs.  asyncio.shield() prevents cancellation of the
                 # underlying task when wait_for() raises TimeoutError.
-                gen_task = asyncio.create_task(generate_blog_post(scored[0], target_keyword))
+                gen_task = asyncio.create_task(
+                    generate_blog_post(
+                        news_item=top_story,
+                        keyword=target_keyword,
+                        tier=tier,
+                        cluster_id=cluster_id,
+                    )
+                )
 
                 _progress = [
                     (7,  "Generating SERP-informed outline (Step 1/7)"),
@@ -298,7 +359,7 @@ async def run_blog_generate_stream(request: Request, keyword: str = None):
                 post = await gen_task
                 # ── end pipeline ──────────────────────────────────────────────
 
-                await cb(11, f"Saving draft: {post.slug}")
+                await cb(11, f"Saving to Drafts Queue: {post.slug}")
                 await save_blog_draft(post)
 
                 history = _load_job_history()

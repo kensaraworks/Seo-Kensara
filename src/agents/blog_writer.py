@@ -587,7 +587,8 @@ _SECTION_TYPE_RULES: dict = {
         "Output a Markdown table. Minimum 4 rows, maximum 8 rows. Minimum 3 columns, maximum 5 columns. "
         "Include a table caption (keyword-containing phrase) ABOVE the table. "
         "Include a one-sentence alt-text summary BELOW the table for screen readers and AI extractors. "
-        "At least one column entity should be KensaraAI (for commercial intent)."
+        "Tables MUST focus on objective compliance data, industry breakdowns, or regulatory requirements. "
+        "Do NOT include promotional or marketing columns like 'KensaraAI Support' in educational/informational tables."
     ),
     "case_study": (
         "ALWAYS begin with 'Illustrative Example:' label. "

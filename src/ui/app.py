@@ -194,6 +194,41 @@ async def lifespan(app: FastAPI):
 
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
     app.state.scheduler = scheduler
+
+    # Automatic background execution logger
+    from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+    from src.ui.routers.schedule import record_job_execution
+
+    def _on_job_executed(event):
+        job_id = event.job_id
+        item_count = 0
+        duration_ms = 0
+        latest_news = None
+        if isinstance(event.retval, dict):
+            item_count = event.retval.get("count", 0)
+            duration_ms = event.retval.get("duration_ms", 0)
+            latest_news = event.retval.get("latest_news")
+        record_job_execution(
+            job_id=job_id,
+            status="ok",
+            item_count=item_count,
+            duration_ms=duration_ms,
+            triggered_by="auto",
+            latest_news=latest_news,
+        )
+
+    def _on_job_error(event):
+        job_id = event.job_id
+        record_job_execution(
+            job_id=job_id,
+            status="error",
+            error=str(event.exception) if event.exception else "Execution error",
+            triggered_by="auto",
+        )
+
+    scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
+    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
+
     scheduler.add_job(run_news_scan, CronTrigger(hour=8, minute=0), id="news_scan", name="Daily news scan")
     scheduler.add_job(run_blog_generate, CronTrigger(hour=8, minute=15), id="blog_generate", name="Daily blog generation")
     scheduler.add_job(run_regulatory_poll, CronTrigger(hour="*/10", minute=0), id="regulatory_poll", name="Regulatory feed poll")

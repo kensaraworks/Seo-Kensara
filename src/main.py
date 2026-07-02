@@ -479,6 +479,39 @@ def main() -> None:
 
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 
+    from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+    from src.ui.routers.schedule import record_job_execution
+
+    def _on_job_executed(event):
+        job_id = event.job_id
+        item_count = 0
+        duration_ms = 0
+        latest_news = None
+        if isinstance(event.retval, dict):
+            item_count = event.retval.get("count", 0)
+            duration_ms = event.retval.get("duration_ms", 0)
+            latest_news = event.retval.get("latest_news")
+        record_job_execution(
+            job_id=job_id,
+            status="ok",
+            item_count=item_count,
+            duration_ms=duration_ms,
+            triggered_by="auto",
+            latest_news=latest_news,
+        )
+
+    def _on_job_error(event):
+        job_id = event.job_id
+        record_job_execution(
+            job_id=job_id,
+            status="error",
+            error=str(event.exception) if event.exception else "Execution error",
+            triggered_by="auto",
+        )
+
+    scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
+    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
+
     # Daily news scan at 08:00 IST
     scheduler.add_job(
         run_news_scan,

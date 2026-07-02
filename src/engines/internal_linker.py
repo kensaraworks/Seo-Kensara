@@ -251,14 +251,14 @@ def inject_mandatory_links(
     injected_urls: list[str] = []
     used_anchors: set[str] = set()
 
-    # Rule 1: Link to cluster pillar page
+    # Rule 1: Link to cluster pillar page (formatted as subtle related reading tip)
     pillar = query_pillar_for_cluster(cluster_id, db_path)
     if pillar:
         if _url_already_linked(markdown, pillar["post_url"]):
             log.debug("rule1_pillar_already_linked", cluster=cluster_id)
         else:
             anchor = f"complete DPDPA {cluster_id} compliance guide"
-            link_text = f"[{anchor}]({pillar['post_url']})"
+            link_text = f"*Related guide: [{anchor}]({pillar['post_url']})*"
             markdown, injected = _inject_after_nth_h2(markdown, link_text, n=1)
             if injected:
                 injected_urls.append(pillar["post_url"])
@@ -268,17 +268,16 @@ def inject_mandatory_links(
     else:
         log.warning("rule1_no_pillar_found", cluster=cluster_id)
 
-    # Rule 2: Link to service page (deterministic topic detection)
+    # Rule 2: Link to service page (injected into the CTA section at bottom of post)
     service_url, service_anchor = _pick_service_page(keyword)
     if _url_already_linked(markdown, service_url):
         log.debug("rule2_service_already_linked", url=service_url)
     elif service_anchor not in used_anchors:
         link_text = f"[{service_anchor}]({service_url})"
-        markdown, injected = _inject_after_nth_h2(markdown, link_text, n=2)
-        if injected:
-            injected_urls.append(service_url)
-            used_anchors.add(service_anchor)
-            log.info("rule2_service_link_injected", url=service_url)
+        markdown = _inject_into_cta_section(markdown, link_text)
+        injected_urls.append(service_url)
+        used_anchors.add(service_anchor)
+        log.info("rule2_service_link_injected", url=service_url)
 
     # Rule 3: Commercial/transactional posts must link to /compare or /pricing
     if intent_type in ("commercial", "transactional"):
@@ -294,7 +293,7 @@ def inject_mandatory_links(
                 used_anchors.add(compare_anchor)
                 log.info("rule3_compare_link_injected")
 
-    # Rule 4: Tier 3 must link to a relevant Tier 1/2 post
+    # Rule 4: Tier 3 must link to a relevant Tier 1/2 post (formatted as subtle further reading note)
     if tier == 3:
         relevant = query_relevant_tier1_or_2_post(keyword, cluster_id, db_path)
         if relevant:
@@ -303,7 +302,7 @@ def inject_mandatory_links(
             else:
                 anchor = f"read our in-depth guide to {relevant['primary_keyword']}"
                 if anchor not in used_anchors:
-                    link_text = f"[{anchor}]({relevant['post_url']})"
+                    link_text = f"*Further reading: [{anchor}]({relevant['post_url']})*"
                     markdown = _inject_at_end_of_first_h2(markdown, link_text)
                     injected_urls.append(relevant["post_url"])
                     used_anchors.add(anchor)
