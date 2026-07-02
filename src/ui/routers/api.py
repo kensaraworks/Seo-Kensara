@@ -297,7 +297,7 @@ async def check_llm_health():
         except Exception as e:
             return "gsc", {"status": "error", "message": str(e), "latency_ms": 0}
 
-    async with httpx.AsyncClient(timeout=6.0) as client:
+    async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
         tasks = [
             check_nvidia(client),
             check_groq(client),

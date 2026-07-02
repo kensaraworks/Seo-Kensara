@@ -239,7 +239,7 @@ async def generate_blog_post(
     tier_config = get_tier_config(tier, industry)
     tier3_title = None
     if tier == 3:
-        entity = news_item.url or "Regulator"
+        entity = news_item.item.url or "Regulator"
         if "gov.in" in entity:
             entity = "Gov"
         tier3_title = generate_tier3_title(entity, news_item.suggested_angle or "Update")
