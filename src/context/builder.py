@@ -48,6 +48,10 @@ class IndiaLocalization(BaseModel):
     relevant_dpdpa_sections: List[str] = []
     relevant_dpdpa_rules: List[str] = []
     indian_company_examples: List[str] = []
+    # Short, real, human-confirmed enforcement precedents (never the
+    # auto-detected/unverified tracker rows) — grounding for case_study /
+    # regulatory_explainer sections instead of invented examples.
+    regulatory_precedents: List[str] = []
     indian_penalty_refs: List[str] = []
     compliance_deadlines: List[str] = []
     india_english: bool = True
@@ -120,7 +124,8 @@ def assemble_keyword_brief(
     cluster_id: str = "general",
     news_angle: str = "",
     paa_questions: List[str] = None,
-    serp_intelligence: Optional[SerpIntelligence] = None
+    serp_intelligence: Optional[SerpIntelligence] = None,
+    industry: Optional[str] = None,
 ) -> KeywordBrief:
     """Assemble full Keyword Brief JSON for LLM injection."""
     
@@ -175,10 +180,36 @@ def assemble_keyword_brief(
         unique_angles=["AI-native compliance vs legacy workflows"]
     )
     
+    # Real, human-confirmed enforcement precedents from data/enforcement_tracker.json,
+    # scoped to this post's industry when known — never the hardcoded mock
+    # company names this used to carry (spec Phase 0: ground it in evidence).
+    try:
+        from src.agents.enforcement_tracker import get_confirmed_precedents
+        precedents = get_confirmed_precedents(sector=industry, limit=3)
+    except Exception as exc:
+        log.warning("enforcement_precedent_lookup_failed", error=str(exc))
+        precedents = []
+
+    precedent_companies = [p["company"] for p in precedents if p.get("company")]
+    precedent_summaries = [
+        f"{p.get('company', 'Unknown')} — {p.get('authority', 'regulator')} action, "
+        f"{p.get('date', '')}: {p.get('outcome', '')} (₹/penalty: {p.get('penalty_amount', 'undisclosed')})"
+        for p in precedents
+    ]
+
     localization = IndiaLocalization(
         relevant_regulators=["DPBI", "MeitY"],
-        indian_company_examples=["Reliance", "Tata Motors"], # Mocks
-        compliance_deadlines=["Ongoing"]
+        indian_company_examples=precedent_companies,
+        regulatory_precedents=precedent_summaries,
+        # Real commencement dates from the ingested DPDP Rules 2025 text
+        # (Gazette No. 760, 13 Nov 2025) — Rule 1(2)-(4): Board + procedural
+        # rules in force immediately, Rule 4 (Consent Manager) after 1 year,
+        # remaining substantive rules (incl. penalties) after 18 months.
+        compliance_deadlines=[
+            "Data Protection Board + procedural rules in force: 13 November 2025",
+            "Consent Manager registration opens: 13 November 2026",
+            "Full substantive compliance deadline: 13 May 2027",
+        ],
     )
     
     # Filter Brand Context based on intent

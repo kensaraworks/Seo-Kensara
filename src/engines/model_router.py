@@ -69,7 +69,10 @@ ANTI_HALLUCINATION_SYSTEM_PROMPT: str = (
     "\"it goes without saying\", \"needless to say\", \"in conclusion\", "
     "\"in summary\", \"to summarize\", \"as we can see\", \"in this blog post\", "
     "\"we will explore\", \"let us dive into\", \"without further ado\", "
-    "\"at the end of the day\"\n"
+    "\"at the end of the day\", \"to further understand the implications of\", "
+    "\"moving forward, it is essential\", \"it is worth noting\", "
+    "\"as we have seen\", \"as discussed above\", \"as mentioned earlier\", "
+    "\"as noted previously\"\n"
     "- Produce content in American English — use Indian English throughout "
     "(organisation not organization, authorised not authorized, recognised not recognized)\n"
     "- Make legal over-claims: never write \"100% compliant\", \"fully compliant\", "
@@ -79,7 +82,39 @@ ANTI_HALLUCINATION_SYSTEM_PROMPT: str = (
     "- Express financial penalties in ₹ first, then USD in parentheses\n"
     "- Name the specific Indian regulatory body (DPBI, MeitY, RBI, SEBI, IRDAI, "
     "CERT-In, TRAI) — never say 'the regulator' without naming it\n"
-    "- Write in Indian English throughout"
+    "- Write in Indian English throughout\n\n"
+    "─────────────────────────────────────────────────────────────\n"
+    "APPROVED DPDPA PENALTY AMOUNTS — USE ONLY THESE FIGURES\n"
+    "Do not use any other penalty figure. Do not recall a penalty figure from\n"
+    "training-data memory of earlier draft bills — only the enacted Act's figures below.\n"
+    "─────────────────────────────────────────────────────────────\n"
+    "Failure to implement reasonable security safeguards (Section 8(5)): up to ₹250 crore\n"
+    "Failure to notify DPBI of a personal data breach (Section 8(6)): up to ₹200 crore\n"
+    "Failure to notify affected data principals of a breach (Section 8(7)): up to ₹200 crore\n"
+    "Failure to fulfil data principal rights — access, correction, erasure: up to ₹50 crore\n"
+    "Failure of Consent Manager obligations: up to ₹50 crore\n"
+    "Failure of Significant Data Fiduciary (SDF) obligations: up to ₹250 crore\n"
+    "General / residual non-compliance: up to ₹50 crore\n"
+    "BANNED FIGURES (draft-bill era, NOT in the enacted Act — never write these): "
+    "₹5 crore, ₹25 crore, ₹500 crore, ₹2,500 crore\n"
+    "If the figure you need is not listed above and not given to you in context, "
+    "write 'as per the applicable penalty provisions of the DPDPA' instead of a number.\n\n"
+    "─────────────────────────────────────────────────────────────\n"
+    "DPDPA SECTION NUMBER GUARD\n"
+    "The Digital Personal Data Protection Act 2023 has exactly 40 sections (1-40).\n"
+    "Rules under the Act run from Rule 1 to approximately Rule 22.\n"
+    "NEVER cite Section 41 or above, or Rule 23 or above — they do not exist.\n"
+    "Known correct mappings — use ONLY these when citing a specific section:\n"
+    "  Section 4: grounds for processing personal data | Section 5: notice requirements\n"
+    "  Section 6: consent requirements | Section 7: legitimate use without consent\n"
+    "  Section 8: obligations of data fiduciary (8(5) security safeguards, 8(6) breach notification)\n"
+    "  Section 9: children's data | Section 10: Significant Data Fiduciary obligations\n"
+    "  Section 11: data principal rights (access, correction, erasure, nomination)\n"
+    "  Section 16: exemptions | Section 25: penalties (general) | Section 26: power to make rules\n"
+    "  Section 40: repeal and savings\n"
+    "If you need to cite a section for a concept not listed above, write 'as per the DPDPA' "
+    "without a specific section number — never invent a plausible-sounding one.\n"
+    "─────────────────────────────────────────────────────────────"
 )
 
 
@@ -122,13 +157,15 @@ TASK_ROUTING: dict[str, TaskConfig] = {
     # For Tier 3: tier3_safe=False forces override to Groq (latency).
     "regulatory_section": TaskConfig(
         preferred_model="nvidia_blog",
-        temperature=0.5,
+        temperature=0.3,
         tier3_safe=False,
     ),
-    # Step 3: Assembly / continuity editing pass — near-deterministic editing
+    # Step 3: Assembly / continuity editing pass — this is an EDITING task
+    # (delete redundant/filler text, do not generate new prose), so temperature
+    # is kept near-zero (spec CHANGE-A2: "creativity must be suppressed").
     "assembly": TaskConfig(
         preferred_model="groq",
-        temperature=0.2,
+        temperature=0.1,
         tier3_safe=True,
     ),
     # Step 5: Metadata generation — plain text (meta desc is a string, not JSON)
@@ -137,6 +174,15 @@ TASK_ROUTING: dict[str, TaskConfig] = {
         temperature=0.1,
         json_mode=False,
         tier3_safe=True,
+    ),
+    # FAQ answers — generated AFTER the body is assembled and must stay 100%
+    # consistent with it (no new ₹ figures / section numbers / dates). NVIDIA
+    # Mistral is measurably better at honouring "don't introduce new facts"
+    # constraints than Groq at this task (spec CHANGE-C1/C2).
+    "faq": TaskConfig(
+        preferred_model="nvidia_blog",
+        temperature=0.3,
+        tier3_safe=False,
     ),
     # ── pillar pipeline ───────────────────────────────────────────────────
     # Spec 2.9.A: "NVIDIA NIM as PRIMARY (not fallback) for pillar pages".

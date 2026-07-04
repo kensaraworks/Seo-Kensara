@@ -44,7 +44,7 @@
   ══════════════════════════════════════════════════════════════════════ #}
   <div>
     <div class="section-title">Content Pipeline</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
       <div class="stat-card">
         <div class="stat-value" style="color:#fbbf24;">{{ total_pending }}</div>
         <div class="stat-label">Awaiting Approval</div>
@@ -64,6 +64,11 @@
         <div class="stat-value" style="color:#6b7280;">{{ total_rejected }}</div>
         <div class="stat-label">Rejected</div>
         <div class="stat-sub">discarded</div>
+      </div>
+      <div class="stat-card" style="{% if total_flagged > 0 %}border-color:rgba(220,38,38,0.4);{% endif %}">
+        <div class="stat-value" style="color:#f87171;">{{ total_flagged }}</div>
+        <div class="stat-label">🚩 Flagged</div>
+        <div class="stat-sub">{% if total_flagged > 0 %}<a href="/queue/?filter=pending" style="color:#f87171;">needs legal review</a>{% else %}none{% endif %}</div>
       </div>
     </div>
   </div>

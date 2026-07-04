@@ -28,6 +28,7 @@ import re
 import json
 import time
 import uuid
+import asyncio
 import datetime
 import sqlite3
 import structlog
@@ -50,6 +51,8 @@ from src.engines.model_router import (
     BudgetExceededError,
     ANTI_HALLUCINATION_SYSTEM_PROMPT,
 )
+from src.rag.query_library import get_dpdpa_grounding
+from src.rag.context_builder import build_context_block
 
 log = structlog.get_logger()
 
@@ -65,12 +68,14 @@ except (ImportError, OSError):
     SPACY_AVAILABLE = False
 
 # ---------------------------------------------------------------------------
-# Tier word count targets (spec 2.3)
+# Tier word count RANGES (spec 2.3, widened per Phase 1 CHANGE — depth should
+# follow how much genuinely specific content a topic has, not a fixed target.
+# These are outer bounds, not a number to hit — see _step1_generate_outline.
 # ---------------------------------------------------------------------------
 TIER_WORD_COUNT: dict = {
-    1: (1800, 2500),
-    2: (1200, 1600),
-    3: (600, 900),
+    1: (1400, 3000),
+    2: (900, 2200),
+    3: (500, 1000),
 }
 
 # Weekly keyword rotation — cycles deterministically by ISO week number.
@@ -89,6 +94,62 @@ KEYWORD_ROTATION: list[str] = [
     "significant data fiduciary India DPDPA",
     "cross-border data transfer DPDPA India",
 ]
+
+
+def _wrap_internal_context(context_str: str) -> str:
+    """Wrap injected keyword-brief/brand JSON so the LLM treats it strictly as
+    background knowledge, never as literal text to reproduce (spec CHANGE-B4).
+    Prevents brand facts leaking into the article as bare standalone lines.
+    """
+    return (
+        "─── INTERNAL CONTEXT — DO NOT REPRODUCE IN OUTPUT ───\n"
+        "The following facts are background knowledge only, to inform what you write. "
+        "Reference them naturally where relevant to the content. "
+        "Do NOT output them as standalone sentences, headings, or bullet lists. "
+        "Do NOT reproduce this label, the JSON structure, or field names in the article.\n"
+        f"{context_str}\n"
+        "─── END OF INTERNAL CONTEXT ───"
+    )
+
+
+_PREVIOUSLY_WRITTEN_WORD_LIMIT = 900
+
+
+def _build_previously_written_block(previously_written: str) -> str:
+    """Build the anti-redundancy context block injected into every section
+    prompt after the first (spec CHANGE-A1) — the single root cause of
+    cross-section redundancy is that each section was generated cold, with no
+    knowledge of what earlier sections already said.
+
+    Truncates to the last 2 sections once the cumulative draft grows past a
+    budget-safe word limit, so long Tier 1 posts don't blow the per-call
+    token budget while still telling the model what NOT to repeat.
+    """
+    text = previously_written.strip()
+    if not text:
+        return ""
+
+    if len(text.split()) > _PREVIOUSLY_WRITTEN_WORD_LIMIT:
+        parts = text.split("\n\n## ")
+        if len(parts) > 2:
+            kept = "## " + "\n\n## ".join(parts[-2:])
+            text = (
+                "[Earlier sections omitted for brevity — do not repeat facts, "
+                "figures, penalty amounts, or rules already covered in the omitted "
+                "sections.]\n\n" + kept
+            )
+
+    return (
+        "\n\n=== PREVIOUSLY WRITTEN SECTIONS (DO NOT REPEAT ANYTHING FROM THESE) ===\n"
+        f"{text}\n"
+        "=== END OF PREVIOUS SECTIONS ===\n\n"
+        "STRICT RULE: Your section must contain ZERO sentences that repeat a fact, rule, "
+        "obligation, penalty amount, or regulatory requirement already stated in the "
+        "sections above. Do not rephrase, restate, or summarise what is above. If you "
+        "cannot add genuinely new information without repeating what is above, write "
+        "fewer words — a short section with new information is better than a long "
+        "one that repeats old information."
+    )
 
 
 def _get_keyword_rotation() -> list[str]:
@@ -129,6 +190,12 @@ class BlogPost(BaseModel):
 
     risk_level: str = "HIGH"
     approved: bool = False
+
+    # Set when check_penalty_consistency() finds a banned/contradictory ₹
+    # figure — the post is written to drafts/flagged/ instead of drafts/blogs/
+    # and must never be treated as a normal pending-review item.
+    flagged: bool = False
+    flag_reason: str = ""
 
     author: str = "Mr Rudraksh Tatwal"
     author_credentials: str = "Founder & CEO, KensaraAI"
@@ -180,6 +247,8 @@ def _assemble_post(keyword: str, content: str, meta: dict) -> BlogPost:
         qa_score=meta.get("qa_score", 0.0),
         risk_level=meta.get("risk_level", "HIGH"),
         approved=meta.get("approved", False),
+        flagged=meta.get("flagged", False),
+        flag_reason=meta.get("flag_reason", ""),
         date_created=meta.get("date_created", datetime.datetime.now(datetime.timezone.utc).isoformat()),
         schema_json=meta.get("schema_json", "{}"),
         internal_links_injected=meta.get("internal_links_injected", []),
@@ -228,6 +297,7 @@ async def generate_blog_post(
         news_angle=news_item.suggested_angle,
         paa_questions=paa_questions,
         serp_intelligence=serp_intel if isinstance(serp_intel, SerpIntelligence) else None,
+        industry=industry,
     )
     brief_dict = brief.model_dump()
 
@@ -249,20 +319,21 @@ async def generate_blog_post(
     # -------------------------------------------------------------------
     outline = await _step1_generate_outline(
         router, keyword, context_str, intent_type,
-        paa_questions, tier, target_words, tier_config, tier3_title
+        paa_questions, tier, target_words, tier_config, tier3_title,
+        cluster_id=cluster_id,
     )
 
     # -------------------------------------------------------------------
     # Step 2: Section-by-Section Body Generation
     # -------------------------------------------------------------------
     sections = await _step2_generate_sections(
-        router, outline, keyword, context_str, intent_type, tier
+        router, outline, keyword, context_str, intent_type, tier, industry=industry
     )
 
     # -------------------------------------------------------------------
     # Step 3: Assembly & Continuity Pass
     # -------------------------------------------------------------------
-    assembled_md = await _step3_assembly_pass(router, sections, outline, keyword)
+    assembled_md = await _step3_assembly_pass(router, sections, outline, keyword, tier=tier)
 
     # -------------------------------------------------------------------
     # Step 4: On-Page SEO Injection (deterministic, no LLM)
@@ -274,6 +345,12 @@ async def generate_blog_post(
 
     # Apply Indian English enforcement (spec 2.8.B)
     optimised_md = apply_india_style(optimised_md)
+
+    # -------------------------------------------------------------------
+    # Step 4c: QA Gate & Targeted Fix (spec Phase 2 — before link injection so
+    # the fix pass can never disturb an already-injected hyperlink)
+    # -------------------------------------------------------------------
+    optimised_md = await _step4c_qa_gate_and_fix(router, optimised_md, outline, keyword, intent_type, tier)
 
     # -------------------------------------------------------------------
     # Step 4b: Mandatory Internal Link Injection (spec 2.5.B — deterministic)
@@ -330,6 +407,43 @@ async def generate_blog_post(
             risk_level = "HIGH"
             approved = False
 
+    # Hard blocker: banned/contradictory ₹ penalty figures force HIGH risk +
+    # manual review regardless of GEO score or tier (spec CHANGE-B2). This is
+    # the live-pipeline home for the penalty-consistency check — the
+    # dedicated QA module (src/quality/checker.py) is not wired into the
+    # generation path, so it runs inline here where it can actually affect
+    # risk_level/approved on every post before it reaches the queue.
+    from src.quality.checker import check_penalty_consistency
+    penalty_check = check_penalty_consistency(optimised_md)
+    flagged = False
+    flag_reason = ""
+    if not penalty_check["passed"]:
+        geo_flags.append(
+            f"[PENALTY_CONSISTENCY] banned_amounts={penalty_check['banned_amounts_found']} "
+            f"conflicting_sentences={len(penalty_check['conflicting_sentences'])}"
+        )
+        risk_level = "HIGH"
+        approved = False
+        log.warning(
+            "penalty_consistency_check_failed",
+            keyword=keyword,
+            banned=penalty_check["banned_amounts_found"],
+            conflicts=len(penalty_check["conflicting_sentences"]),
+        )
+        # A banned (draft-bill-era) figure is a hard legal-accuracy blocker —
+        # per spec CHANGE-B2 this post never reaches the normal review queue;
+        # it's written to drafts/flagged/ instead of drafts/blogs/ and
+        # surfaced separately in the content UI. Internal contradictions
+        # (conflicting_sentences with no banned figure) stay in the normal
+        # queue with HIGH risk — a softer signal, still worth a human look
+        # but not necessarily a legal-accuracy violation.
+        if penalty_check["banned_amounts_found"]:
+            flagged = True
+            flag_reason = (
+                "Banned penalty figure(s) detected — not in the enacted DPDPA: "
+                f"{', '.join('₹' + a for a in penalty_check['banned_amounts_found'])}"
+            )
+
     if geo_flags:
         log.warning("geo_flags_detected", flags=geo_flags, failed_critical=failed_critical)
 
@@ -350,6 +464,8 @@ async def generate_blog_post(
         geo_flags=geo_flags,
         risk_level=risk_level,
         approved=approved,
+        flagged=flagged,
+        flag_reason=flag_reason,
     )
 
     _write_to_drafts(final_post)
@@ -426,6 +542,41 @@ _OUTLINE_SCHEMA = """{
 }"""
 
 
+def _get_winning_template_hint(cluster_id: str) -> str:
+    """Return a soft structural hint from GSC-confirmed winning posts in this
+    cluster (spec Phase 2) — closed-loop learning from what our own traffic
+    has actually rewarded, which no competitor can replicate for our site.
+
+    Explicitly advisory, never mandatory: depth still follows topic value
+    (Phase 1), this only informs H2 shape/length when real winners exist.
+    Returns "" when there's no confirmed winner yet for this cluster.
+    """
+    try:
+        from src.analytics.feedback_loop import extract_winning_templates
+        templates = extract_winning_templates(cluster_id=cluster_id)
+    except Exception as exc:
+        log.warning("winning_template_lookup_failed", error=str(exc))
+        return ""
+
+    if not templates:
+        return ""
+
+    lines = []
+    for t in templates[:2]:
+        h2s = ", ".join(t.get("h2_structure") or []) or "structure not recorded"
+        lines.append(
+            f"- \"{t.get('keyword', '')}\" ({t.get('word_count', 0)} words, "
+            f"{t.get('impressions_30d', 0)} impressions/30d): H2s were [{h2s}]"
+        )
+
+    return (
+        "\n\nSTRUCTURAL REFERENCE FROM HIGH-PERFORMING POSTS IN THIS CLUSTER "
+        "(advisory only — do not copy verbatim, do not let this override rule 8's "
+        "depth-follows-content principle; use only as a signal for what has "
+        "actually worked for this audience):\n" + "\n".join(lines)
+    )
+
+
 async def _step1_generate_outline(
     router: ModelRouter,
     keyword: str,
@@ -436,6 +587,7 @@ async def _step1_generate_outline(
     target_words: int,
     tier_config: dict,
     tier3_title: Optional[str] = None,
+    cluster_id: str = "general",
 ) -> dict:
     """Step 1: Strict JSON outline with a 1-retry validation loop.
 
@@ -444,20 +596,21 @@ async def _step1_generate_outline(
       - featured_snippet_block present and 40-60 words
       - At least 2 question-format H2s
       - CTA section present
-      - Word count targets sum within 10% of tier target
+      - Word count targets sum within the tier's word band
     """
     log.info("step1_outline_started", keyword=keyword, tier=tier, target_words=target_words)
     tier_low, tier_high = TIER_WORD_COUNT.get(tier, (1200, 1600))
+    winning_template_hint = _get_winning_template_hint(cluster_id)
 
     base_prompt = f"""Generate a strict JSON outline for a Tier {tier} SEO-and-GEO-optimised article.
 
 PRIMARY KEYWORD: {keyword}
 INTENT TYPE: {intent_type}
-TIER: {tier} (Target: {tier_low}–{tier_high} words, aim for {target_words})
-PAA QUESTIONS TO INCORPORATE: {json.dumps(paa_questions or [], ensure_ascii=False)}
+TIER: {tier} (Total length must fall between {tier_low} and {tier_high} words — see rule 8 below for how to choose where in that range)
+PAA QUESTIONS TO INCORPORATE: {json.dumps(paa_questions or [], ensure_ascii=False)}{winning_template_hint}
 
 FULL KEYWORD BRIEF (use all signals below):
-{context_str}
+{_wrap_internal_context(context_str)}
 
 MANDATORY TIER {tier} STRUCTURE (generate exactly these H2s in this order):
 {json.dumps(tier_config["structure"], indent=2)}
@@ -473,10 +626,20 @@ MANDATORY OUTLINE RULES — ALL MUST BE FOLLOWED:
 5. At least 1 H2 MUST cover a topic zero competitors cover (use gap_topics from context).
 6. section_type values MUST be one of: answer_block, regulatory_explainer, how_to, comparison_table, case_study, faq_block, cta_section.
 7. The final content section MUST be section_type="cta_section".
-8. All target_words values must sum within 10% of {target_words}.
+8. Depth follows how much you actually have to say, not a fixed target. Set each section's
+   target_words based on how many genuinely specific key_points_to_cover it has (rule 12) —
+   a section with 2 specific facts should be short; a section with 5+ should run long. The
+   SUM of all target_words must land between {tier_low} and {tier_high} words total. Do NOT
+   pad a section to reach a round number, and do NOT truncate a section that has real
+   specific content just to save words. A well-supported {tier_low}-word article beats a
+   padded {tier_high}-word one.
 9. faq_section.questions MUST use exact PAA phrasing from context where available. MUST be highly specific to the primary keyword. BANNED generic questions: "What is DPDPA?", "What are the penalties under DPDPA?", "Who is a Data Fiduciary?", "Does DPDPA apply to my business?", "Is DPDPA active?".
 10. url_slug MUST be all-lowercase, hyphenated, contain the primary keyword, no stop words (the, and, a, for, of, in).
 11. BANNED: If no highly topic-specific or context-specific PAA questions are available, set faq_section.include to false. Do NOT generate generic regulatory placeholder questions.
+12. key_points_to_cover MUST be SPECIFIC FACTUAL CLAIMS, never generic topic labels. Each item MUST contain at least one of: a specific ₹ figure or percentage, a named Indian regulatory body, a specific DPDPA Section or Rule number, a specific timeframe (72 hours, 30 days, etc.), or a named sector/entity type.
+    WRONG (topic labels — do not do this): ["compliance challenges", "SMEs", "sector specific"]
+    RIGHT (specific factual claims): ["MSMEs with turnover below ₹250 crore face resource constraints meeting the 72-hour window", "RBI-regulated NBFCs must notify both DPBI and RBI simultaneously"]
+    A vague label without one of these signals is not acceptable and will cause the section writer to pad with generic filler.
 
 OUTPUT: Valid JSON only. No markdown code fences. No explanation text.
 JSON SCHEMA:
@@ -508,7 +671,7 @@ JSON SCHEMA:
             validation_errors = ["JSON was malformed — output ONLY valid JSON, no markdown fences."]
             continue
 
-        validation_errors = _validate_outline(outline, keyword, target_words)
+        validation_errors = _validate_outline(outline, keyword, tier_low, tier_high)
         if not validation_errors:
             log.info("step1_outline_valid", sections=len(outline.get("sections", [])))
             return outline
@@ -521,7 +684,7 @@ JSON SCHEMA:
     return outline  # type: ignore[possibly-undefined]
 
 
-def _validate_outline(outline: dict, keyword: str, target_words: int) -> List[str]:
+def _validate_outline(outline: dict, keyword: str, tier_low: int, tier_high: int) -> List[str]:
     """Return list of validation error strings. Empty list = valid."""
     errors = []
     kw_lower = keyword.lower()
@@ -550,14 +713,19 @@ def _validate_outline(outline: dict, keyword: str, target_words: int) -> List[st
     if "cta_section" not in section_types:
         errors.append("No section has section_type='cta_section'.")
 
+    # Depth follows content, not a fixed midpoint (spec Phase 1) — validate
+    # against the tier's outer band with modest slack, not closeness to one
+    # number, so a genuinely thin or genuinely rich topic isn't forced to pad
+    # or cut just to hit a target.
     total_target = sum(s.get("target_words", 0) for s in sections)
-    if total_target > 0:
-        deviation = abs(total_target - target_words) / target_words
-        if deviation > 0.15:
-            errors.append(
-                f"Section target_words sum ({total_target}) deviates {deviation:.0%} from "
-                f"{target_words}. Must stay within 10%."
-            )
+    band_low = int(tier_low * 0.85)
+    band_high = int(tier_high * 1.15)
+    if total_target > 0 and not (band_low <= total_target <= band_high):
+        errors.append(
+            f"Section target_words sum ({total_target}) falls outside the Tier "
+            f"{band_low}-{band_high} word band. Adjust section depth to fit — pad "
+            f"nothing, cut nothing that has genuine specific content."
+        )
 
     return errors
 
@@ -592,11 +760,17 @@ _SECTION_TYPE_RULES: dict = {
     ),
     "case_study": (
         "ALWAYS begin with 'Illustrative Example:' label. "
-        "Use a fictional but plausible Indian company. "
+        "Use a fictional but plausible Indian company — never name a real company as the "
+        "violator in the illustrative example itself. "
         "Structure: Company profile (2 sentences) → Challenge (2 sentences) → "
         "How DPDPA requirement applies (3 sentences) → Resolution approach (3 sentences) → "
         "Lesson for reader (1 sentence). "
-        "Do NOT claim this is a real Kensara client."
+        "If REGULATORY PRECEDENT EXAMPLES are present in the context below, ground the "
+        "stakes and consequences in one of those REAL historical cases — cite the real "
+        "company, authority, and outcome explicitly as precedent (e.g. 'This mirrors the "
+        "real 2022 RBI action against Mastercard...'), separately from the fictional "
+        "illustrative company. Do NOT invent a precedent that isn't in the context. "
+        "Do NOT claim the illustrative company is a real Kensara client."
     ),
     "faq_block": (
         "3-5 questions pulled directly from PAA questions in the context. "
@@ -609,6 +783,57 @@ _SECTION_TYPE_RULES: dict = {
 }
 
 
+async def _get_comparison_grounding_block(keyword: str) -> str:
+    """Retrieve real, previously-crawled competitor content for comparison_table
+    sections (spec Phase 0 Step 3) so tables compare against actual competitor
+    facts instead of an invented comparison. Degrades to "" on any failure —
+    the section still generates, just without competitor-grounded facts.
+    """
+    try:
+        from src.agents.content_gap_analyzer import get_comparison_grounding
+        rows = await asyncio.to_thread(get_comparison_grounding, keyword)
+    except Exception as exc:
+        log.warning("comparison_grounding_retrieval_failed", error=str(exc))
+        return ""
+
+    if not rows:
+        return ""
+
+    lines = "\n".join(
+        f"- {r.get('competitor_domain', '')}: \"{r.get('title', '')}\" — "
+        f"{(r.get('summary') or '')[:200]}"
+        for r in rows
+    )
+    return (
+        "\n\n=== REAL COMPETITOR CONTENT (crawled — for factual comparison only) ===\n"
+        f"{lines}\n"
+        "Use this ONLY to ground what competitors actually publish or offer. Do NOT "
+        "invent a competitor claim not shown here. Do NOT frame any competitor "
+        "negatively — neutral, factual comparison only.\n"
+        "=== END OF COMPETITOR CONTENT ==="
+    )
+
+
+async def _get_regulatory_grounding_block(section_heading: str, keyword: str, industry: Optional[str]) -> str:
+    """Retrieve verified DPDP Rules 2025 text for a regulatory_explainer section
+    (spec CHANGE Phase 0: ground the writer in real statutory text instead of a
+    synthetic keyword-brief label). Degrades to "" on any retrieval failure —
+    the section still generates, just without grounded citations that call.
+    """
+    try:
+        chunks = await asyncio.to_thread(get_dpdpa_grounding, section_heading, keyword, industry)
+    except Exception as exc:
+        log.warning("dpdpa_grounding_retrieval_failed", section=section_heading[:80], error=str(exc))
+        return ""
+
+    if not chunks:
+        return ""
+
+    return "\n\n" + build_context_block(
+        "statutory_text", "dpdpa_source", chunks, token_budget=1200
+    )
+
+
 async def _step2_generate_sections(
     router: ModelRouter,
     outline: dict,
@@ -616,11 +841,14 @@ async def _step2_generate_sections(
     context_str: str,
     intent_type: str,
     tier: int,
+    industry: Optional[str] = None,
 ) -> List[dict]:
     """Step 2: Generate each section individually, respecting section_type rules.
 
     CTA sections are NEVER sent to the LLM — pulled from cta_library.
-    Regulatory sections use NVIDIA as primary model (better legal reasoning).
+    Regulatory sections use NVIDIA as primary model (better legal reasoning) and
+    are grounded in real retrieved DPDP Rules 2025 text when a matching rule
+    exists (spec Phase 0 — the model cites verified text, not a guessed number).
     Sections failing validation are retried once with corrective instruction.
     Tier 3: single pass, Groq only, no retries (speed over depth).
     """
@@ -633,6 +861,12 @@ async def _step2_generate_sections(
         "type": "answer_block",
         "content": f"**Quick Answer:** {snippet}",
     })
+
+    # Cumulative anti-redundancy context (spec CHANGE-A1). Every section after
+    # the first is told what earlier sections already covered so it stops
+    # restating the same facts, penalty figures, and rules in every section —
+    # the single root cause of cross-section redundancy in generated posts.
+    previously_written = f"## Quick Answer\n\n{snippet}" if snippet else ""
 
     for idx, sec in enumerate(outline.get("sections", [])):
         sec_type = sec.get("section_type", "standard")
@@ -670,6 +904,29 @@ async def _step2_generate_sections(
                     "Use them to break the content into named sub-topics (e.g. '### What This Means in Practice', "
                     "'### Key Obligations', '### Common Mistakes'). Every H2 section MUST contain at least one H3."
                 )
+
+        grounding_block = ""
+        grounding_instruction = ""
+        if sec_type == "regulatory_explainer":
+            grounding_block = await _get_regulatory_grounding_block(
+                sec.get("h2_heading", ""), keyword, industry
+            )
+            if grounding_block:
+                grounding_instruction = (
+                    "\nA VERIFIED DPDP Rules 2025 excerpt is provided below under "
+                    "'VERIFIED DPDPA STATUTORY TEXT'. You MUST base your rule/section "
+                    "citation and obligations on that excerpt, not on general knowledge. "
+                    "Cite the exact Rule number it names."
+                )
+        elif sec_type == "comparison_table":
+            grounding_block = await _get_comparison_grounding_block(keyword)
+            if grounding_block:
+                grounding_instruction = (
+                    "\nReal, crawled competitor content is provided below under "
+                    "'REAL COMPETITOR CONTENT'. Ground your table in these actual "
+                    "facts wherever relevant instead of inventing a comparison."
+                )
+
         prompt = f"""Write a single section for a Tier {tier} DPDPA compliance article targeting: '{keyword}'
 
 SECTION TYPE: {sec_type}
@@ -677,13 +934,14 @@ H2 HEADING: {sec.get('h2_heading', '')}
 TARGET WORD COUNT: {sec.get('target_words', 250)} words
 KEY POINTS TO COVER: {json.dumps(sec.get('key_points_to_cover', []))}
 INDIA SPECIFICITY REQUIRED: {sec.get('india_specificity_requirement', 'Include at least one India-specific signal (₹, regulator name, DPDPA section, or Indian company example).')}
-INTERNAL LINK OPPORTUNITY: {sec.get('internal_link_opportunity', 'None')}{h3_block}
+INTERNAL LINK OPPORTUNITY: {sec.get('internal_link_opportunity', 'None')}{h3_block}{grounding_instruction}
 
 SECTION TYPE RULES (MANDATORY):
 {rules}
 
 KEYWORD BRIEF CONTEXT:
-{context_str}
+{_wrap_internal_context(context_str)}
+{_build_previously_written_block(previously_written)}{grounding_block}
 
 OUTPUT: Raw markdown only. Include the H2 heading. No ``` fences. No explanation."""
 
@@ -696,6 +954,7 @@ OUTPUT: Raw markdown only. Include the H2 heading. No ``` fences. No explanation
             section_idx=idx,
         )
         sections_content.append({"type": sec_type, "content": content})
+        previously_written += f"\n\n## {sec.get('h2_heading', sec_type)}\n\n{content}"
 
     return sections_content
 
@@ -811,15 +1070,34 @@ async def _generate_faq_answers(
     router: ModelRouter,
     questions: List[str],
     keyword: str,
+    article_body: str = "",
 ) -> str:
-    """Generate real FAQ answers in one LLM call (replaces placeholder insertion)."""
+    """Generate FAQ answers grounded in the already-assembled article body.
+
+    Passing the assembled body as context (spec CHANGE-A3) stops this — a
+    separate LLM call from the body sections — from inventing its own ₹
+    figures, DPDPA section numbers, or deadlines that contradict the article.
+    Routed to the "faq" task (NVIDIA Mistral, spec CHANGE-C1): measurably
+    better than Groq at honouring "don't introduce facts not given" rules.
+    """
     q_list = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions))
+    article_block = (
+        "The following compliance article has already been written and approved. "
+        "Your answers MUST be 100% consistent with it:\n"
+        f"---\n{article_body.strip()}\n---\n\n"
+        if article_body.strip() else ""
+    )
     prompt = (
         f"Write concise FAQ answers for a DPDPA compliance article about: '{keyword}'\n\n"
+        f"{article_block}"
         f"QUESTIONS:\n{q_list}\n\n"
         "RULES:\n"
         "- Each answer MUST be a complete 40-80 word detailed paragraph.\n"
-        "- Include India-specific context (₹ figures, DPDPA section numbers, or regulator names) where relevant\n"
+        "- Do NOT introduce any ₹ figure, DPDPA Section/Rule number, or deadline that is not "
+        "already present in the article above. If a question needs a fact not covered by the "
+        "article, answer in general terms (e.g. 'as per DPDPA requirements') instead of inventing one.\n"
+        "- Include India-specific context (₹ figures, DPDPA section numbers, or regulator names) "
+        "only when they already appear in the article above.\n"
         "- Format each Q&A pair as:\n\n"
         "### [Question]\n\n"
         "[Full answer paragraph]\n\n"
@@ -830,8 +1108,81 @@ async def _generate_faq_answers(
         {"role": "system", "content": ANTI_HALLUCINATION_SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
-    result, _ = await router.generate_with_fallback("section", messages)
+    result, _ = await router.generate_with_fallback("faq", messages)
     return f"## Frequently Asked Questions\n\n{result.strip()}\n\n"
+
+
+async def _step3b_critique_and_revise(router: ModelRouter, assembled: str, keyword: str) -> str:
+    """A second, skeptical pass over the assembled draft (spec Phase 1).
+
+    The assembly pass only removes redundancy/filler — it never asks whether
+    the surviving content is actually useful. This runs a separate call that
+    role-plays a compliance officer who has read this topic before and lists
+    ONLY concrete objections (generic claims, unsupported assertions, filler
+    that survived assembly). A single targeted revision then addresses just
+    those objections — it is not a rewrite pass.
+
+    Skipped for Tier 3 (speed requirement, spec 2.3) and degrades safely to
+    the unrevised draft if the job's token budget is exhausted or either call
+    fails, so this never blocks publication.
+    """
+    critique_prompt = f"""You are a skeptical, experienced Indian data-protection compliance officer reviewing a draft article about '{keyword}' before publication. You have read dozens of DPDPA explainer posts already and are tired of generic ones.
+
+List ONLY concrete problems below — no praise, no summary of what's good, no restating the article.
+For each problem: quote the exact offending sentence or phrase, then explain in one line what's wrong. Look specifically for:
+- Generic advice that could apply to any compliance topic, not specific to this one
+- A claim presented as fact with no support anywhere in the article
+- A sentence that just restates something already said elsewhere in the article
+- A paragraph that sounds authoritative but gives the reader nothing decision-useful to act on
+
+If a section has none of these problems, do not mention it — say nothing about sections that are fine.
+If the article genuinely has none of these problems anywhere, output exactly: NO_ISSUES_FOUND
+
+DRAFT:
+{assembled}"""
+
+    messages = [
+        {"role": "system", "content": ANTI_HALLUCINATION_SYSTEM_PROMPT},
+        {"role": "user", "content": critique_prompt},
+    ]
+    try:
+        critique, _ = await router.generate_with_fallback("assembly", messages)
+    except (BudgetExceededError, RuntimeError) as exc:
+        log.warning("step3b_critique_call_failed", error=str(exc))
+        return assembled
+
+    critique = critique.strip()
+    if not critique or critique.upper().startswith("NO_ISSUES_FOUND"):
+        log.info("step3b_critique_no_issues")
+        return assembled
+
+    revision_prompt = f"""Edit the article below based on a compliance officer's critique. Fix ONLY the specific problems listed — do not touch sections that weren't flagged, do not rewrite for style, and do not add new content beyond what's needed to fix a flagged issue. Often the correct fix is simply deleting the flagged sentence, or making a vague claim specific using a fact already present elsewhere in the draft.
+
+CRITIQUE (fix only these):
+{critique}
+
+OUTPUT RULE: Start your response IMMEDIATELY with the '# ' H1 heading. No preamble, no explanation of what you changed.
+
+DRAFT TO FIX:
+{assembled}"""
+
+    messages = [
+        {"role": "system", "content": ANTI_HALLUCINATION_SYSTEM_PROMPT},
+        {"role": "user", "content": revision_prompt},
+    ]
+    try:
+        revised, _ = await router.generate_with_fallback("assembly", messages)
+    except (BudgetExceededError, RuntimeError) as exc:
+        log.warning("step3b_revision_call_failed", error=str(exc))
+        return assembled
+
+    revised = revised.strip()
+    if not revised or len(revised.split()) < 100:
+        log.warning("step3b_revision_empty_keeping_original")
+        return assembled
+
+    log.info("step3b_critique_and_revise_complete", critique_chars=len(critique))
+    return revised
 
 
 async def _step3_assembly_pass(
@@ -839,12 +1190,14 @@ async def _step3_assembly_pass(
     sections: List[dict],
     outline: dict,
     keyword: str,
+    tier: int = 1,
 ) -> str:
-    """Step 3: LLM editing pass — transitions, formatting, byline, 'Last Updated'.
+    """Step 3: LLM editing pass — deletes redundancy/filler, preserves byline/'Last Updated'.
 
-    This pass does NOT rewrite.  It connects and formats only.
+    This pass does NOT write new prose. Its job is almost entirely deletion:
+    cross-section restatements and filler transition sentences (spec CHANGE-A2).
     Incoherent sections are flagged inline as [ASSEMBLY_FLAG: description].
-    Model: Groq at temperature 0.2 (spec 2.9.A — assembly task).
+    Model: Groq at temperature 0.1 (spec 2.9.A / CHANGE-A2 — near-deterministic editing).
     """
     log.info("step3_assembly_started")
     iso_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -857,11 +1210,6 @@ async def _step3_assembly_pass(
     for s in sections:
         raw_text += s["content"].strip() + "\n\n"
 
-    faq_md = ""
-    faq = outline.get("faq_section", {})
-    if faq.get("include") and faq.get("questions"):
-        faq_md = await _generate_faq_answers(router, faq["questions"], keyword)
-
     about_author_md = (
         "---\n\n"
         "**About the Author**\n\n"
@@ -870,19 +1218,22 @@ async def _step3_assembly_pass(
         "for enterprises and MSMEs.\n"
     )
 
-    prompt = f"""Act as a professional copy editor. You are editing an article draft on: '{keyword}'
+    prompt = f"""Act as a professional compliance content editor, not a writer. You are editing an article draft on: '{keyword}'
 
 RULES (DO NOT BREAK ANY):
-1. Do NOT rewrite or summarise existing content — only ADD 1-2 transition sentences between sections.
-2. The byline 'By Mr Rudraksh Tatwal | Founder & CEO, KensaraAI' MUST remain immediately under the H1.
-3. The 'Last Updated' line MUST remain in place.
-4. Verify the featured_snippet_block / Quick Answer is correctly placed as the first content after the byline.
-5. Ensure all Markdown tables, numbered lists, and bullet lists are correctly formatted.
-6. Ensure H1 → H2 → H3 heading hierarchy is strict (no H4 or H5).
-7. If any section is incoherent with surrounding context, flag it as: [ASSEMBLY_FLAG: description].
-8. The CTA section MUST be the last content section.
-9. Remove any duplicate lines or repeated paragraphs.
-10. OUTPUT RULE: Start your response IMMEDIATELY with the '# ' H1 heading. Do NOT write any preamble, explanation, or acknowledgement before the H1.
+1. This is an EDITING pass, not a writing pass — your job is almost entirely to DELETE, not to add. Creativity is suppressed for this task.
+2. DELETE any sentence whose entire purpose is to introduce or summarise another section (e.g. "Moving forward, it is essential to...", "To further understand the implications of...", "As discussed above...", "As mentioned earlier...", "In conclusion...", "It is worth noting that..."). Sections should follow each other directly under their headings.
+3. DELETE any sentence whose meaning is already fully expressed elsewhere in the document — keep only the FIRST occurrence of a given fact, figure, penalty amount, or rule; delete every later restatement of it.
+4. You may add at most ONE short connective phrase (never a full sentence) between two sections, and only if omitting it would make the transition genuinely confusing. Sections were written aware of each other, so this should rarely be needed.
+5. The byline 'By Mr Rudraksh Tatwal | Founder & CEO, KensaraAI' MUST remain immediately under the H1.
+6. The 'Last Updated' line MUST remain in place.
+7. Verify the featured_snippet_block / Quick Answer is correctly placed as the first content after the byline.
+8. Ensure all Markdown tables, numbered lists, and bullet lists are correctly formatted.
+9. Ensure H1 → H2 → H3 heading hierarchy is strict (no H4 or H5).
+10. If any section is incoherent with surrounding context, flag it as: [ASSEMBLY_FLAG: description].
+11. The CTA section MUST be the last content section.
+12. Do NOT rewrite or paraphrase sentences that are fine as-is — only delete or lightly trim. Do NOT summarise.
+13. OUTPUT RULE: Start your response IMMEDIATELY with the '# ' H1 heading. Do NOT write any preamble, explanation, or acknowledgement before the H1.
 
 DRAFT:
 {raw_text}"""
@@ -894,14 +1245,29 @@ DRAFT:
     assembled, _ = await router.generate_with_fallback("assembly", messages)
     assembled = assembled.strip()
 
-    # Programmatically append FAQ and About Author after assembly pass
+    if not assembled or len(assembled.split()) < 100:
+        log.warning("step3_empty_response_using_raw")
+        assembled = raw_text.strip()
+
+    # Step 3b: skeptical second pass (spec Phase 1). Skipped for Tier 3 —
+    # speed requirement, spec 2.3 — where a single assembly pass is final.
+    if tier != 3:
+        assembled = await _step3b_critique_and_revise(router, assembled, keyword)
+
+    # FAQ is generated AFTER assembly, grounded in the final body text (spec
+    # CHANGE-A3) so its facts cannot drift from what the article actually says,
+    # then appended programmatically — never routed back through an LLM
+    # rewrite pass that could strip or reword the answers.
+    faq_md = ""
+    faq = outline.get("faq_section", {})
+    if faq.get("include") and faq.get("questions"):
+        faq_md = await _generate_faq_answers(
+            router, faq["questions"], keyword, article_body=assembled
+        )
+
     if faq_md:
         assembled += "\n\n" + faq_md.strip()
     assembled += "\n\n" + about_author_md.strip() + "\n"
-
-    if not assembled or len(assembled.split()) < 100:
-        log.warning("step3_empty_response_using_raw")
-        return raw_text
 
     log.info("step3_assembly_complete", word_count=len(assembled.split()))
     return assembled
@@ -1033,6 +1399,90 @@ def _step4_seo_injection(markdown: str, keyword: str, gap_topics: List[str]) -> 
 
     log.info("step4_seo_injection_complete", keyword_density=f"{density:.2%}", gov_links_injected=injected_gov)
     return markdown
+
+
+# ---------------------------------------------------------------------------
+# STEP 4c — QA Gate & Targeted Fix (spec Phase 2)
+# ---------------------------------------------------------------------------
+
+async def _step4c_qa_gate_and_fix(
+    router: ModelRouter,
+    markdown: str,
+    outline: dict,
+    keyword: str,
+    intent_type: str,
+    tier: int,
+) -> str:
+    """Run the Module 2.6 QA scorer (src/quality/checker.py) and, if it fails,
+    apply ONE targeted fix pass addressing exactly what it found.
+
+    Previously check_blog_quality() was never called anywhere in the
+    generation path — a QA score nobody acts on can't improve anything. This
+    makes it a real gate: a failing score triggers a single revision seeded
+    with the checker's own structured findings (banned filler phrases,
+    low-density sections, penalty inconsistencies) — not a generic rewrite.
+    Skipped for Tier 3 (speed requirement, spec 2.3) and degrades safely to
+    the unfixed draft on any failure, so this never blocks publication.
+    """
+    if tier == 3:
+        return markdown
+
+    from src.quality.checker import check_blog_quality
+
+    def _make_temp_post(content: str) -> BlogPost:
+        return BlogPost(
+            title=outline.get("h1_title", keyword),
+            meta_description="",
+            slug="qa-check",
+            primary_keyword=keyword,
+            content_markdown=content,
+            word_count=len(content.split()),
+        )
+
+    result = check_blog_quality(_make_temp_post(markdown), keyword, intent_type)
+    log.info("step4c_qa_gate_scored", score=round(result.score, 3), status=result.status)
+
+    if result.passed:
+        return markdown
+
+    findings = list(result.issues) + list(result.warnings)
+    if not findings:
+        return markdown
+
+    findings_text = "\n".join(f"- {f}" for f in findings[:12])
+
+    fix_prompt = f"""A quality checker scored this DPDPA compliance article {result.score:.2f}/1.00 (pass threshold 0.55) and found these specific problems. Fix ONLY these — do not rewrite or touch anything not listed, and do NOT remove or alter any existing Markdown hyperlink of the form [text](url).
+
+FINDINGS TO FIX:
+{findings_text}
+
+OUTPUT RULE: Start your response IMMEDIATELY with the '# ' H1 heading. No preamble, no explanation of what you changed.
+
+ARTICLE:
+{markdown}"""
+
+    messages = [
+        {"role": "system", "content": ANTI_HALLUCINATION_SYSTEM_PROMPT},
+        {"role": "user", "content": fix_prompt},
+    ]
+    try:
+        fixed, _ = await router.generate_with_fallback("assembly", messages)
+    except (BudgetExceededError, RuntimeError) as exc:
+        log.warning("step4c_qa_fix_call_failed", error=str(exc))
+        return markdown
+
+    fixed = fixed.strip()
+    if not fixed or len(fixed.split()) < 100:
+        log.warning("step4c_qa_fix_empty_keeping_original")
+        return markdown
+
+    try:
+        result_after = check_blog_quality(_make_temp_post(fixed), keyword, intent_type)
+        log.info("step4c_qa_gate_after_fix", before=round(result.score, 3), after=round(result_after.score, 3))
+    except Exception:
+        pass
+
+    return fixed
 
 
 # ---------------------------------------------------------------------------
@@ -1252,6 +1702,8 @@ def _step7_final_assembly(
     geo_flags: List[str],
     risk_level: str,
     approved: bool,
+    flagged: bool = False,
+    flag_reason: str = "",
 ) -> BlogPost:
     """Step 7: Inject full YAML frontmatter and build BlogPost object.
 
@@ -1294,7 +1746,9 @@ geo_flags:
 {geo_flags_yaml}
 risk_level: "{risk_level}"
 approved: {str(approved).lower()}
-status: "pending"
+flagged: {str(flagged).lower()}
+flag_reason: "{flag_reason.replace('"', "'")}"
+status: "{'flagged' if flagged else 'pending'}"
 author: "Mr Rudraksh Tatwal"
 author_credentials: "Founder & CEO, KensaraAI"
 date_created: "{iso_date}"
@@ -1322,6 +1776,8 @@ wp_post_url: null
         "qa_score": qa_score,
         "risk_level": risk_level,
         "approved": approved,
+        "flagged": flagged,
+        "flag_reason": flag_reason,
         "date_created": iso_date,
         "schema_json": schema_json_str,
         "featured_image_alt": f"{keyword} — kensara.in",
@@ -1351,15 +1807,22 @@ def _clean_slug(raw_slug: str) -> str:
 
 
 def _write_to_drafts(post: BlogPost) -> None:
-    """Write the final Markdown file to drafts/blogs/ per spec file naming convention."""
+    """Write the final Markdown file to drafts/blogs/, or drafts/flagged/ when
+    the post failed the penalty-consistency hard blocker (spec CHANGE-B2) —
+    it must never sit alongside normal pending-review posts.
+    """
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"{date_str}-{post.slug}.md"
-    drafts_dir = os.path.join(settings.content_output_dir, "blogs")
+    target_folder = "flagged" if post.flagged else "blogs"
+    drafts_dir = os.path.join(settings.content_output_dir, target_folder)
     os.makedirs(drafts_dir, exist_ok=True)
     filepath = os.path.join(drafts_dir, filename)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(post.content_markdown)
-    log.info("draft_written", path=filepath, word_count=post.word_count)
+    if post.flagged:
+        log.warning("draft_flagged_for_review", path=filepath, reason=post.flag_reason)
+    else:
+        log.info("draft_written", path=filepath, word_count=post.word_count)
 
 
 def _log_to_sqlite(

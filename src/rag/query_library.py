@@ -37,15 +37,20 @@ def get_competitor_gaps(primary_keyword: str) -> List[Dict]:
 def get_dpdpa_grounding(section_heading: str, primary_keyword: str, industry: Optional[str] = None) -> List[Dict]:
     """
     TASK 3: DPDPA Regulatory Grounding (Body Generation, Regulatory Sections)
+
+    No metadata `where` filter is applied for `industry`: statutory text applies
+    across sectors, ingested dpdpa_source chunks don't carry a sector tag, and
+    ChromaDB's where-filter operators don't support the array-membership check
+    ("$contains") this used to reference. Instead `industry` is folded into the
+    free-text query so hybrid search can still weight toward sector-relevant
+    provisions (e.g. Significant Data Fiduciary obligations for fintech) without
+    hard-excluding universally-applicable rules.
     """
     query = f"{section_heading} {primary_keyword} obligations requirements India"
-    
-    filter_dict = None
     if industry:
-        # Note: ChromaDB uses $contains for array membership
-        filter_dict = {"applicable_sectors": {"$contains": industry}}
-        
-    return retrieve(query, "dpdpa_source", metadata_filter=filter_dict, top_k=3)
+        query += f" {industry} sector"
+
+    return retrieve(query, "dpdpa_source", metadata_filter=None, top_k=3)
 
 def get_brand_facts(primary_keyword: str, relevant_modules: str, cluster_id: str) -> List[Dict]:
     """

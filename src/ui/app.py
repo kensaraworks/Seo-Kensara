@@ -30,6 +30,7 @@ from src.main import (
 )
 from src.agents.content_gap_analyzer import run_competitor_intelligence
 from src.agents.content_refresher import process_pending_refreshes
+from src.agents.enforcement_tracker import update_enforcement_tracker
 from src.analytics.gsc_widgets import (
     get_high_impression_low_ctr_queries,
     get_pages_near_page_one,
@@ -93,6 +94,7 @@ def _ensure_drafts_structure() -> None:
         root / "linkedin",
         root / "newsletters",
         root / "reports",
+        root / "flagged",
         root / ".cache",
     ]
     for path in required_paths:
@@ -274,6 +276,13 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         name="Monthly content performance feedback loop",
     )
+    scheduler.add_job(
+        update_enforcement_tracker,
+        CronTrigger(day_of_week="thu", hour=6, minute=0, timezone="Asia/Kolkata"),
+        id="enforcement_tracker_update",
+        replace_existing=True,
+        name="Weekly DPDPA enforcement tracker update",
+    )
     scheduler.start()
     log.info("seo_agent_started_via_fastapi", jobs=scheduler.get_jobs())
     yield
@@ -372,6 +381,7 @@ def _collect_drafts() -> list[dict]:
         "blogs": ("blog", "📄"),
         "linkedin": ("linkedin", "📱"),
         "newsletters": ("newsletter", "📧"),
+        "flagged": ("blog", "🚩"),
     }
     for folder, (content_type, icon) in type_map.items():
         folder_path = DRAFTS_ROOT / folder
@@ -440,6 +450,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     total_approved = sum(1 for i in items if i["approved"] is True)
     total_rejected = sum(1 for i in items if i["status"] == "rejected")
     total_published = sum(1 for i in items if i["status"] == "published")
+    total_flagged = sum(1 for i in items if i["status"] == "flagged")
     week_ago = str(date.today() - timedelta(days=7))
     this_week = [i for i in items if str(i.get("date", "")) >= week_ago]
 
@@ -481,6 +492,7 @@ async def dashboard(request: Request) -> HTMLResponse:
         "total_approved": total_approved,
         "total_rejected": total_rejected,
         "total_published": total_published,
+        "total_flagged": total_flagged,
         "this_week_count": len(this_week),
         "this_week_items": this_week[:5],
         # GSC

@@ -8,6 +8,7 @@ generates the Monday Intelligence Brief.
 import asyncio
 import importlib
 import json
+import re
 from datetime import datetime, date
 from pathlib import Path
 from urllib.parse import urlparse, urljoin
@@ -24,6 +25,31 @@ from src.agents.serp_intelligence import fetch_advanced_serp
 
 log = structlog.get_logger()
 
+
+def get_comparison_grounding(keyword: str, limit: int = 5) -> list[dict]:
+    """Return real, previously-crawled competitor content relevant to `keyword`
+    (spec Phase 0 Step 3) so comparison_table sections cite what competitors
+    actually publish instead of an invented comparison. Pulls from the same
+    competitor_intel rows the Monday intelligence brief already gathers via
+    real Tavily crawls — no new crawling here, just relevance-scored reuse.
+    """
+    rows = job_queue.get_recent_competitor_intel(days=90)
+    if not rows:
+        return []
+
+    kw_terms = {w for w in re.findall(r"[a-z0-9]+", keyword.lower()) if len(w) > 2}
+    if not kw_terms:
+        return rows[:limit]
+
+    def _relevance(row: dict) -> int:
+        text = f"{row.get('title', '')} {row.get('summary', '')} {row.get('primary_keyword', '')}".lower()
+        return sum(1 for term in kw_terms if term in text)
+
+    scored = [(row, _relevance(row)) for row in rows]
+    scored = [(row, score) for row, score in scored if score > 0]
+    scored.sort(key=lambda pair: pair[1], reverse=True)
+    return [row for row, _ in scored[:limit]]
+
 COMPETITOR_DOMAINS = [
     "securiti.ai",
     "cookieyes.com",
@@ -34,7 +60,11 @@ COMPETITOR_DOMAINS = [
     "pwc.com/in",
     "tsaaro.com",
     "tcs.com",
-    "dutient.ai"
+    "dutient.ai",
+    # Added: publishes a substantial, actively-maintained DPDPA blog (Phase 1
+    # guide, cookie consent, consent managers, etc.) but was missing from
+    # tracking entirely — a real blind spot in the Monday competitor brief.
+    "secureprivacy.ai",
 ]
 
 CORE_KEYWORDS = [

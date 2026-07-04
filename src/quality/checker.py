@@ -79,6 +79,25 @@ GENERIC_FILLER = [
     "let us dive into",
     "without further ado",
     "at the end of the day",
+
+    # 2.6.B / spec CHANGE-E1 — transition/filler phrases that create redundancy
+    # between sections generated in isolation.
+    "to further understand the implications of",
+    "moving forward, it is essential",
+    "moving forward, it is important",
+    "it is crucial for effective compliance",
+    "it is essential to consider its impact",
+    "this is crucial for",
+    "as we have seen",
+    "as discussed above",
+    "as mentioned earlier",
+    "as noted previously",
+]
+
+# Regex variants of the above where the subject varies (spec CHANGE-E1
+# templates like "Understanding X is crucial/essential").
+GENERIC_FILLER_PATTERNS = [
+    r"understanding [\w\s]{1,40} is (?:also )?(?:crucial|essential)",
 ]
 
 # Indian-context signals (Legacy fallback)
@@ -117,6 +136,110 @@ APPROVED_DATES = [
     "november 2026",
     "may 2027"
 ]
+
+# ---------------------------------------------------------------------------
+# Spec CHANGE-B2 — Penalty amount consistency (legal accuracy hard blocker)
+# ---------------------------------------------------------------------------
+# Approved figures per the enacted DPDPA 2023 (see model_router.py's
+# ANTI_HALLUCINATION_SYSTEM_PROMPT for the full breakdown by section).
+APPROVED_PENALTY_AMOUNTS = {"250 crore", "200 crore", "50 crore"}
+
+# Draft-bill-era figures that must never appear — they are not in the enacted Act.
+BANNED_PENALTY_AMOUNTS = {
+    "5 crore", "25 crore", "500 crore", "2,500 crore", "2500 crore",
+}
+
+# Spec CHANGE-E2 — Information-density specificity signals
+SPECIFICITY_PATTERNS = [
+    r'₹\s*\d+',                                      # Rupee amounts
+    r'\b(?:DPBI|MeitY|RBI|SEBI|IRDAI|CERT-In)\b',    # Named regulators
+    r'\bSection\s+\d+\b|\bRule\s+\d+\b',              # Statutory references
+    r'\d+\s*(?:hours|days|months|years)',             # Timeframes
+    r'\d+\s*(?:crore|lakh|%)',                        # Figures
+    r'\b(?:fintech|healthtech|edtech|BFSI|MSME|NBFC)\b',  # Named sectors
+]
+
+
+def check_penalty_consistency(content: str) -> Dict:
+    """Detect banned draft-bill penalty figures and internal ₹-figure contradictions.
+
+    A post citing ₹5 crore in one paragraph and ₹250 crore in another for the
+    same class of violation is a legal-accuracy failure, not a style issue —
+    this is a hard blocker per spec CHANGE-B2, not just a scoring nudge.
+    """
+    sentences = re.split(r'(?<=[.!?])\s+', content)
+    penalty_sentences = [
+        s for s in sentences
+        if re.search(r'₹|crore', s, re.IGNORECASE)
+        and re.search(r'penalty|fine|non.compliance|violation|liable', s, re.IGNORECASE)
+    ]
+
+    content_lower = content.lower()
+    banned_found = [amt for amt in BANNED_PENALTY_AMOUNTS if amt in content_lower]
+
+    amounts_found: List[str] = []
+    for s in penalty_sentences:
+        amounts_found.extend(re.findall(r'₹\s*([\d,]+)\s*crore', s, re.IGNORECASE))
+    unique_amounts = {a.replace(",", "") for a in amounts_found}
+
+    # More than 2 distinct crore figures across penalty-bearing sentences is a
+    # strong signal of a contradiction (e.g. ₹5 crore vs ₹250 crore for the
+    # same violation type), not merely a post covering several violation tiers.
+    conflicting = penalty_sentences if len(unique_amounts) > 2 else []
+
+    passed = not banned_found and not conflicting
+    deduction = (len(banned_found) * 10) + (15 if conflicting else 0)
+
+    return {
+        "passed": passed,
+        "banned_amounts_found": banned_found,
+        "conflicting_sentences": conflicting,
+        "deduction": deduction,
+    }
+
+
+def count_specific_facts_in_section(section_text: str) -> int:
+    """Count sentences containing at least one specificity signal (spec CHANGE-E2)."""
+    sentences = re.split(r'(?<=[.!?])\s+', section_text)
+    return sum(
+        1 for sentence in sentences
+        if any(re.search(p, sentence, re.IGNORECASE) for p in SPECIFICITY_PATTERNS)
+    )
+
+
+def validate_information_density(content: str) -> Dict:
+    """Flag H2 sections with low information density — many words, few specific facts.
+
+    Minimum bar: 1 specific fact per 75 words (floor of 2 facts per section),
+    per spec CHANGE-E2. Sections that pad word count with generic advice
+    instead of specific claims fail this check.
+    """
+    sections = re.split(r'\n##\s+', content)
+    failing_sections: List[Dict] = []
+
+    for section in sections[1:]:  # sections[0] is content before the first H2
+        lines = section.split('\n', 1)
+        heading = lines[0].strip()
+        body = lines[1] if len(lines) > 1 else ""
+        word_count = len(body.split())
+        if word_count < 30:
+            continue  # too short to meaningfully judge (e.g. CTA sections)
+        fact_count = count_specific_facts_in_section(body)
+        required_facts = max(2, word_count // 75)
+
+        if fact_count < required_facts:
+            failing_sections.append({
+                "heading": heading,
+                "word_count": word_count,
+                "facts_found": fact_count,
+                "facts_required": required_facts,
+            })
+
+    return {
+        "passed": len(failing_sections) == 0,
+        "failing_sections": failing_sections,
+        "deduction": len(failing_sections) * 5,
+    }
 
 # ---------------------------------------------------------------------------
 # Data Models
@@ -269,11 +392,41 @@ def check_blog_quality(
         
     # No generic filler phrases (3 pts)
     filler_count = sum(1 for f in GENERIC_FILLER if f in content_lower)
+    filler_count += sum(1 for p in GENERIC_FILLER_PATTERNS if re.search(p, content_lower))
     if filler_count == 0:
         density_pts += 3
 
-    # Penalty: -5 points per blocked phrase
-    penalty_points = filler_count * 5
+    # Penalty: -5 points per blocked phrase (spec CHANGE-E1), capped at -15
+    penalty_points = min(15, filler_count * 5)
+
+    # -----------------------------------------------------------------------
+    # 2.6.G Penalty Amount Consistency (spec CHANGE-B2 — hard legal blocker)
+    # -----------------------------------------------------------------------
+    penalty_check = check_penalty_consistency(content)
+    penalty_points += penalty_check["deduction"]
+    if penalty_check["banned_amounts_found"]:
+        issues.append(
+            "REJECTED: Banned penalty amount(s) detected — figures from a draft "
+            f"version of the DPDPA, not the enacted Act: {penalty_check['banned_amounts_found']}."
+        )
+    if penalty_check["conflicting_sentences"]:
+        warnings.append(
+            "[PENALTY_INCONSISTENCY] More than 2 distinct ₹ crore figures found across "
+            "penalty-bearing sentences — verify these aren't contradictory claims for the "
+            "same violation."
+        )
+
+    # -----------------------------------------------------------------------
+    # 2.6.H Information Density Per Section (spec CHANGE-E2)
+    # -----------------------------------------------------------------------
+    density_check = validate_information_density(content)
+    penalty_points += density_check["deduction"]
+    if density_check["failing_sections"]:
+        low_density_headings = ", ".join(s["heading"] for s in density_check["failing_sections"][:3])
+        warnings.append(
+            f"[LOW_INFORMATION_DENSITY] {len(density_check['failing_sections'])} section(s) pad "
+            f"word count without enough specific facts: {low_density_headings}"
+        )
 
     # -----------------------------------------------------------------------
     # DIMENSION 3: Content Structure (20 points)
@@ -367,7 +520,12 @@ def check_blog_quality(
     # -----------------------------------------------------------------------
     if filler_count > 2:
         issues.append("REJECTED: More than 2 generic filler phrases detected.")
-        
+    if filler_count > 5:
+        warnings.append(
+            f"[EXCESSIVE_FILLER] {filler_count} filler/transition phrases detected — "
+            "force human review regardless of score."
+        )
+
     for overclaim in LEGAL_OVERCLAIMS:
         if overclaim in content_lower:
             warnings.append(f"[LEGAL_ACCURACY] Legal over-claim detected: '{overclaim}'.")
@@ -472,6 +630,8 @@ def check_blog_quality(
             "india_pts": india_pts,
             "penalty_pts": penalty_points,
             "fk_grade": fk_grade,
-            "avg_sentence_len": avg_sentence_len
+            "avg_sentence_len": avg_sentence_len,
+            "banned_penalty_amounts": penalty_check["banned_amounts_found"],
+            "low_density_section_count": len(density_check["failing_sections"]),
         }
     )

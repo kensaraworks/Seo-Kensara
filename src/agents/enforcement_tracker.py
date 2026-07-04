@@ -59,6 +59,39 @@ class ParsedEnforcementAction(BaseModel):
     needs_verification: bool
 
 
+def get_confirmed_precedents(sector: str | None = None, limit: int = 3) -> list[dict[str, Any]]:
+    """Return real, human-confirmed enforcement precedents for use as grounding
+    context in blog generation (spec Phase 0 — replaces hardcoded mock company
+    examples with real, sourced regulatory history).
+
+    Never returns `_auto_detected` rows (unverified Tavily-scraped placeholders
+    with "[Unconfirmed]" fields) — only entries a human has already confirmed
+    are accurate. These are historical precedent, never a claim that a company
+    is currently non-compliant.
+    """
+    data = _load_tracker()
+    all_actions = (
+        data.get("enforcement_actions", [])
+        + data.get("pre_dpdpa_actions", [])
+        + data.get("cert_in_enforcement", [])
+    )
+    confirmed = [
+        a for a in all_actions
+        if not a.get("_auto_detected")
+        and "[Unconfirmed" not in a.get("company", "")
+        and not a.get("company", "").startswith("N/A")
+    ]
+
+    if sector:
+        sector_lower = sector.lower()
+        sector_matches = [a for a in confirmed if sector_lower in a.get("sector", "").lower()]
+        if sector_matches:
+            confirmed = sector_matches
+
+    confirmed.sort(key=lambda a: a.get("date", ""), reverse=True)
+    return confirmed[:limit]
+
+
 def _load_tracker() -> dict[str, Any]:
     """Load the enforcement tracker JSON from disk."""
     if not TRACKER_PATH.exists():

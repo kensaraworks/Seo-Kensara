@@ -43,10 +43,20 @@ def chunk_dpdpa_source(text: str, doc_type: str, metadata_prefix: str = "") -> L
     Statute-aware structural chunking.
     """
     final_chunks = []
-    
+
     if doc_type in ["act", "rules"]:
-        # Split at Section level (rough approximation, looking for "Section X" at start of line)
-        sections = re.split(r'\n(?=Section\s+\d+)', text)
+        # The enacted Act is organised by "Section N"; the DPDP Rules 2025 are
+        # organised by "Rule N" (plus lettered Schedules) — splitting only on
+        # "Section" left an entire Rules document as a single unchunked blob,
+        # which made retrieval useless for rule-level citations.
+        if doc_type == "rules":
+            pattern = re.compile(
+                r'\n(?=\s*(?:RULE\s+\d+\b|(?:FIRST|SECOND|THIRD|FOURTH|FIFTH)\s+SCHEDULE\b))',
+                re.IGNORECASE,
+            )
+        else:
+            pattern = re.compile(r'\n(?=\s*Section\s+\d+\b)', re.IGNORECASE)
+        sections = pattern.split(text)
         for section in sections:
             section = section.strip()
             if section:

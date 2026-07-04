@@ -31,20 +31,24 @@ def main():
     logger.info("Downloading cross-encoder model (ms-marco-MiniLM-L-6-v2)...")
     _ = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-    # 4. Ingest DPDPA Act 2023 text
+    # 4. Ingest DPDP Rules 2025 text
+    # NOTE: despite the filename, assets/dpdpa_act_2023.txt contains the
+    # Digital Personal Data Protection RULES, 2025 (RULE 1 ... RULE 23 +
+    # Schedules) — not the enacted Act's Sections. Metadata below reflects
+    # what the document actually is so retrieval/citations aren't mislabeled.
     dpdpa_path = os.path.join("assets", "dpdpa_act_2023.txt")
     if os.path.exists(dpdpa_path):
         logger.info(f"Ingesting DPDPA source text from {dpdpa_path}...")
         with open(dpdpa_path, "r", encoding="utf-8") as f:
             text = f.read()
-        
+
         doc_metadata = {
-            "doc_title": "Digital Personal Data Protection Act, 2023",
-            "issuing_body": "Ministry of Law and Justice",
-            "date_issued": "2023-08-11",
-            "doc_type": "Act"
+            "doc_title": "Digital Personal Data Protection Rules, 2025",
+            "issuing_body": "Ministry of Electronics and Information Technology",
+            "date_issued": "2025-11-13",
+            "doc_type": "rules",
         }
-        update_dpdpa_source_texts("dpdpa_act_2023", text, doc_metadata, is_manual_amendment=True)
+        update_dpdpa_source_texts("dpdp_rules_2025", text, doc_metadata, is_manual_amendment=True)
     else:
         logger.warning(f"File not found: {dpdpa_path}. Skipping DPDPA ingestion.")
 

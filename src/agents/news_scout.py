@@ -101,6 +101,25 @@ class ScoredNewsItem(BaseModel):
     suggested_angle: str  # hook for a blog post about this story
 
 
+def qualifies_for_tier3(item: NewsItem) -> bool:
+    """Gate Tier 3 newsjacking on an actual reported EVENT, not a generic status
+    update (spec CHANGE-A5).
+
+    Keyword-based relevance scoring alone can push a story like "MeitY has been
+    actively working on implementation" above the Tier 3 threshold even though
+    nothing new happened — that has been true since 2023. A story only
+    qualifies for Tier 3 if it carries at least 2 of these specificity signals.
+    """
+    text = (item.title + " " + item.summary).lower()
+    signals = [
+        bool(re.search(r'₹\s*\d+', text)),
+        bool(re.search(r'\brule\s+\d+\b|\bsection\s+\d+\(\d+\)', text)),
+        bool(re.search(r'\border\b|\bpenalty\b|\bfine\b|\bnotice\b|\bdirective\b|\badjudicat', text)),
+        bool(re.search(r'\bsection\s+\d+\b', text)),
+    ]
+    return sum(signals) >= 2
+
+
 INDIA_SOURCES = {
     "meity", "meity gazette", "meity press releases", "dpbi", "cert-in", "rbi",
     "sebi", "irdai", "indian court judgments", "et tech", "livemint tech",

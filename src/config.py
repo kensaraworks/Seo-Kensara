@@ -94,7 +94,7 @@ persistent_base = Path(settings.data_dir).resolve()
 settings.content_output_dir = str(persistent_base / "drafts")
 
 # Ensure all subdirectories inside drafts exist
-for sub in ("blogs", "linkedin", "newsletters", "reports", ".cache"):
+for sub in ("blogs", "linkedin", "newsletters", "reports", "flagged", ".cache"):
     Path(settings.content_output_dir, sub).mkdir(parents=True, exist_ok=True)
 
 # Centralize database path

@@ -75,6 +75,7 @@ def _collect_all_items(status_filter: list[str] | None = None) -> list[dict]:
         "blogs": ("blog", "📄"),
         "linkedin": ("linkedin", "📱"),
         "newsletters": ("newsletter", "📧"),
+        "flagged": ("blog", "🚩"),
     }
     items: list[dict] = []
     for folder, (content_type, icon) in type_map.items():
@@ -111,6 +112,8 @@ def _collect_all_items(status_filter: list[str] | None = None) -> list[dict]:
                     "model": fm.get("model", ""),
                     "meta_description": fm.get("meta_description", ""),
                     "image_url": fm.get("image_url", ""),
+                    "flagged": fm.get("flagged", False),
+                    "flag_reason": fm.get("flag_reason", ""),
                     "content": text,
                     "body": _FRONTMATTER_RE.sub("", text).strip(),
                 }
@@ -151,12 +154,19 @@ async def queue_list(request: Request, filter: str = "pending") -> HTMLResponse:
     else:
         items = _collect_all_items(status_filter=["draft", "pending_review"])
 
+    # Flagged items (banned/contradictory ₹ figures — spec CHANGE-B2) never
+    # mix into the normal review tabs. They're surfaced in their own bar on
+    # every tab so a legal-accuracy problem can't be missed by filtering.
+    items = [i for i in items if i["status"] != "flagged"]
+    flagged_items = _collect_all_items(status_filter=["flagged"])
+
     return templates.TemplateResponse(
         "queue.html",
         {
             "request": request,
             "active_page": "queue",
             "items": items,
+            "flagged_items": flagged_items,
             "filter": filter,
             "total_count": len(items),
         },

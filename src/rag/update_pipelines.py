@@ -125,7 +125,7 @@ def update_dpdpa_source_texts(
         # Find existing chunks for this specific document (e.g. Act)
         # Version old chunks - set superseded=True
         collection = get_or_create_collection(collection_key)
-        existing = collection.get(where={"doc_title": title, "superseded": False})
+        existing = collection.get(where={"$and": [{"doc_title": title}, {"superseded": False}]})
         if existing and existing.get("ids"):
             old_ids = existing["ids"]
             old_docs = existing["documents"]

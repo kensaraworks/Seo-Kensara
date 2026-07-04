@@ -33,7 +33,12 @@ from src.geo.entity_monitor import (
 )
 from src.geo.llms_txt_generator import write_llms_txt
 from src.agents.intent_classifier import IntentType
-from src.agents.news_scout import score_news_items, score_all_relevant_news_items, ScoredNewsItem
+from src.agents.news_scout import (
+    score_news_items,
+    score_all_relevant_news_items,
+    qualifies_for_tier3,
+    ScoredNewsItem,
+)
 from src.publishers.file_publisher import save_blog_draft
 from src.scrapers.rss_scraper import fetch_rss_feeds
 from src.queue.job_queue import job_queue
@@ -46,6 +51,7 @@ from src.analytics.feedback_loop import (
 )
 from src.engines.content_calendar import (
     CalendarAction,
+    CalendarSlot,
     build_calendar_window,
     capacity_alert_payload,
     detect_content_gap,
@@ -210,6 +216,28 @@ async def run_blog_generate(story: ScoredNewsItem | None = None) -> None:
                 log.info("newsjack_generation_skipped", reason=reason, score=top_story.relevance_score)
                 return
             slot = get_calendar_slot(date.today(), intelligence_score=top_story.relevance_score)
+            # Spec CHANGE-A5: a high keyword-relevance score alone isn't enough for
+            # Tier 3 — require an actual reported event (penalty, order, section
+            # citation), not a generic status update that's been true for years.
+            if slot.action == CalendarAction.TIER3_NEWSJACK and not qualifies_for_tier3(top_story.item):
+                log.info(
+                    "tier3_downgraded_insufficient_specificity",
+                    title=top_story.item.title[:80],
+                    score=top_story.relevance_score,
+                )
+                # Downgrade to Tier 2 in place — do NOT recompute today's calendar
+                # slot from the weekday, which could land on a shell-slug day with
+                # nothing queued and silently drop this story's post entirely.
+                # The story stays the basis for generation; it just loses its
+                # "breaking newsjack" framing (see the generic-keyword fallback below).
+                slot = CalendarSlot(
+                    run_date=date.today(),
+                    action=CalendarAction.TIER2_INDUSTRY_PLAYBOOK,
+                    tier=2,
+                    content_type="tier2",
+                    reason="Tier 3 downgraded: insufficient specificity signals in source story",
+                    source="calendar",
+                )
 
         if slot.action == CalendarAction.TIER3_NEWSJACK:
             queued_item = None

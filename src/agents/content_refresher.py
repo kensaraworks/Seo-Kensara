@@ -635,10 +635,23 @@ def step4_post_refresh_actions(
     content = post.content_markdown.strip() + "\n"
     current_date_str = datetime.now().strftime("%B %Y")
 
-    if "Last updated:" in content:
-        content = re.sub(r'Last updated:.*', f'Last updated: {current_date_str}', content)
+    # Case-insensitive: the original generation pipeline (blog_writer.py)
+    # writes "Last Updated:" (capital U), but this previously only matched
+    # lowercase "Last updated:" — so every refresh silently failed to update
+    # the real freshness banner near the top and instead appended a second,
+    # duplicate one at the very bottom of the post.
+    if re.search(r'Last updated:', content, re.IGNORECASE):
+        # Stop the match before a closing markdown "*" or newline so the
+        # italic-closing asterisk from "*Last Updated: ...*" is preserved
+        # instead of being consumed and left dangling.
+        content = re.sub(
+            r'Last updated:\s*[^\n*]*',
+            f'Last Updated: {current_date_str}',
+            content,
+            flags=re.IGNORECASE,
+        )
     else:
-        content += f"\n\n*Last updated: {current_date_str}*\n"
+        content += f"\n\n*Last Updated: {current_date_str}*\n"
 
     content, injected_links = inject_mandatory_links(
         markdown=content,
