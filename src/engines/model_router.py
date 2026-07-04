@@ -224,7 +224,12 @@ TASK_ROUTING: dict[str, TaskConfig] = {
 TIER_TOKEN_BUDGET: dict[int, int] = {
     0: 40_000,   # pillar pages
     1: 30_000,   # Tier 1 Regulatory Deep Dive (outline×2retry+sections+assembly+meta ≈ 22-26k)
-    2: 12_000,   # Tier 2 Industry Playbook
+    2: 30_000,   # Tier 2 Industry Playbook (raised from 12k — the critique/QA-gate
+                 # passes and RAG grounding blocks added since Phase 0-2 pushed real
+                 # jobs close to/over the old ceiling; this budget is OUR per-job abort
+                 # threshold only — it does not touch Groq's separate account-side
+                 # 12,000 tokens/minute rate limit, which is what actually caused the
+                 # 429 crash and needs a retry/backoff fix or a Groq plan upgrade)
     3: 40_000,   # Tier 3 Newsjack
 }
 

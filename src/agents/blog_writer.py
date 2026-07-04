@@ -1520,9 +1520,18 @@ async def _step5_metadata_and_schema(
     log.info("step5_metadata_started", keyword=keyword)
     publish_date = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    raw_meta_title = outline.get("meta_title", f"{keyword} | KensaraAI")
-    if len(raw_meta_title) > 60:
-        raw_meta_title = raw_meta_title[:57] + "..."
+    # Force the "| KensaraAI" brand suffix deterministically rather than
+    # trusting the LLM to follow the outline instruction — it has invented
+    # fictional brand suffixes here before (e.g. "| AquaConsento"), and
+    # nothing previously validated or corrected the outline's meta_title.
+    # Brand identity must never be probabilistic.
+    raw_title = (outline.get("meta_title") or keyword).strip()
+    raw_title = raw_title.rsplit("|", 1)[0].strip()
+    brand_suffix = " | KensaraAI"
+    max_prefix_len = 60 - len(brand_suffix)
+    if len(raw_title) > max_prefix_len:
+        raw_title = raw_title[: max_prefix_len - 3].rstrip() + "..."
+    raw_meta_title = raw_title + brand_suffix
 
     meta_desc = outline.get("meta_description", "")
     meta_desc = await _validate_or_regenerate_meta_desc(router, meta_desc, keyword)

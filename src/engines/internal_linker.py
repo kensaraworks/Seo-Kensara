@@ -500,18 +500,26 @@ def _inject_at_end_of_first_h2(markdown: str, link_text: str) -> str:
     return block + f"\n\n{link_text}\n\n" + markdown[first_h2_end:]
 
 
+_CTA_URL_MARKERS = ("kensara.in/dpdpa", "kensara.in/benefits", "kensara.in/book-demo")
+
+
 def _inject_into_cta_section(markdown: str, link_text: str) -> str:
-    """Inject a link at the beginning of the CTA section."""
-    # Find the CTA section — it always contains the kensara.in CTA URL
-    cta_match = re.search(r'(## .+\n\n)', markdown)
-    # More specifically, find heading above a kensara.in/book-assessment or /compare link
-    cta_section_match = re.search(
-        r'(## How Kensara[^\n]*\n)',
-        markdown,
-        re.IGNORECASE
-    )
-    if cta_section_match:
-        pos = cta_section_match.end()
-        return markdown[:pos] + f"\n{link_text}\n" + markdown[pos:]
+    """Inject a link at the beginning of the CTA section.
+
+    Finds the CTA section by its known destination URLs (cta_library.py's
+    three CTA_TEMPLATES all point to one of these), not by heading text —
+    the previous regex only matched the "commercial" intent's "How Kensara..."
+    heading, so every "informational"/"transactional" post (the default and
+    most common intents) silently fell through to the end-of-document
+    fallback, appending a bare, contextless link after the About Author
+    section instead of inside the actual CTA.
+    """
+    headings = list(re.finditer(r'^## .+$', markdown, re.MULTILINE))
+    for idx, heading in enumerate(headings):
+        section_end = headings[idx + 1].start() if idx + 1 < len(headings) else len(markdown)
+        section_body = markdown[heading.end():section_end]
+        if any(marker in section_body for marker in _CTA_URL_MARKERS):
+            pos = heading.end()
+            return markdown[:pos] + f"\n{link_text}\n" + markdown[pos:]
     # Fallback: append before last line
     return markdown.rstrip() + f"\n\n{link_text}\n"
