@@ -51,8 +51,6 @@ from src.engines.model_router import (
     BudgetExceededError,
     ANTI_HALLUCINATION_SYSTEM_PROMPT,
 )
-from src.rag.query_library import get_dpdpa_grounding
-from src.rag.context_builder import build_context_block
 
 log = structlog.get_logger()
 
@@ -819,8 +817,18 @@ async def _get_regulatory_grounding_block(section_heading: str, keyword: str, in
     (spec CHANGE Phase 0: ground the writer in real statutory text instead of a
     synthetic keyword-brief label). Degrades to "" on any retrieval failure —
     the section still generates, just without grounded citations that call.
+
+    RAG imports are lazy and local to this function, not module-level — the
+    retrieval chain pulls in chromadb and sentence-transformers (torch under
+    the hood), which added several minutes to app startup and broke the
+    Azure App Service startup probe when imported eagerly at module load.
+    Every other RAG usage in this codebase (context/builder.py,
+    content_gap_analyzer.py) already follows this lazy pattern.
     """
     try:
+        from src.rag.query_library import get_dpdpa_grounding
+        from src.rag.context_builder import build_context_block
+
         chunks = await asyncio.to_thread(get_dpdpa_grounding, section_heading, keyword, industry)
     except Exception as exc:
         log.warning("dpdpa_grounding_retrieval_failed", section=section_heading[:80], error=str(exc))
