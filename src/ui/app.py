@@ -232,7 +232,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
 
     scheduler.add_job(run_news_scan, CronTrigger(hour=8, minute=0), id="news_scan", name="Daily news scan")
-    scheduler.add_job(run_blog_generate, CronTrigger(hour=8, minute=15), id="blog_generate", name="Daily blog generation")
+    # scheduler.add_job(run_blog_generate, CronTrigger(hour=8, minute=15), id="blog_generate", name="Daily blog generation")
     scheduler.add_job(run_regulatory_poll, CronTrigger(hour="*/10", minute=0), id="regulatory_poll", name="Regulatory feed poll")
     scheduler.add_job(
         run_content_gap_check,

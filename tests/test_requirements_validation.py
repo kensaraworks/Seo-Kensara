@@ -24,10 +24,6 @@ def test_required_runtime_packages_present():
 
     names = {line.split("==", 1)[0].lower() for line in lines}
     required = {
-        "chromadb",
-        "sentence-transformers",
-        "rank-bm25",
-        "langchain-text-splitters",
         "pytrends",
         "curl-cffi",
     }

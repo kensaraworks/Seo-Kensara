@@ -299,6 +299,10 @@ async def run_blog_generate_stream(request: Request, keyword: str = None):
                 from src.agents.blog_writer import generate_blog_post, _get_keyword_rotation
                 from src.publishers.file_publisher import save_blog_draft
 
+                if generate_blog_post is None:
+                    await q.put({"error": "Blog generation is disabled/unavailable on this agent."})
+                    return
+
                 await cb(1, "Initializing AI Engine")
 
                 await cb(2, "Fetching RSS feeds & regulatory sources")
@@ -478,9 +482,12 @@ async def _dispatch_job(job_id: str) -> dict:
         }
 
     if job_id == "blog_generate":
+        from src.agents.blog_writer import generate_blog_post
+        if generate_blog_post is None:
+            return {"count": 0, "message": "Blog generation is disabled/unavailable on this agent"}
         from src.scrapers.rss_scraper import fetch_rss_feeds
         from src.agents.news_scout import score_news_items
-        from src.agents.blog_writer import generate_blog_post, KEYWORD_ROTATION
+        from src.agents.blog_writer import KEYWORD_ROTATION
         from src.publishers.file_publisher import save_blog_draft
         from datetime import date
         items = await fetch_rss_feeds()

@@ -39,3 +39,14 @@ test_out.txt
 
 # Python utility scripts in drafts/
 drafts/*.py
+
+# Blog generation pipeline & RAG modules
+src/agents/blog_writer.py
+src/quality/checker.py
+src/publishers/file_publisher.py
+src/publishers/supabase_publisher.py
+src/rag/
+tests/test_blog_writer.py
+tests/test_checker.py
+tests/test_integrated_pipeline.py
+

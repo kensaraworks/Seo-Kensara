@@ -12,7 +12,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.config import settings
-from src.agents.blog_writer import generate_blog_post
+try:
+    from src.agents.blog_writer import generate_blog_post
+except ImportError:
+    generate_blog_post = None
 from src.agents.keyword_cluster_engine import run_cluster_gap_auto_queue
 from src.agents.trending_monitor import (
     monitor_google_trends,
@@ -185,6 +188,9 @@ async def run_blog_generate(story: ScoredNewsItem | None = None) -> None:
     If a specific story is passed (e.g. from an immediate newsjacking trigger), use it directly.
     """
     log.info("job_blog_generate_start", immediate=story is not None)
+    if generate_blog_post is None:
+        log.warning("blog_generation_disabled", reason="blog_writer module not available")
+        return
     try:
         pending_count = _record_capacity_alert_if_needed()
         if pending_count >= 10:
@@ -350,8 +356,8 @@ async def run_regulatory_poll() -> None:
                     continue
                     
                 log.info("critical_newsjack_triggered", title=s.item.title, score=s.relevance_score)
-                # Trigger blog generation immediately
-                await run_blog_generate(story=s)
+                # Newsjacking blog generation is disabled for the local SEO agent
+                log.info("newsjack_generation_skipped_disabled", reason="blog generation disabled on this agent")
                 
                 # Record it as newsjacked
                 job_queue.record_processed_story(
@@ -548,13 +554,13 @@ def main() -> None:
         name="Daily news scan",
     )
 
-    # Daily blog generation at 08:15 IST (15 min after news scan completes)
-    scheduler.add_job(
-        run_blog_generate,
-        CronTrigger(hour=8, minute=15),
-        id="blog_generate",
-        name="Daily blog generation",
-    )
+    # Daily blog generation is disabled on the local SEO agent
+    # scheduler.add_job(
+    #     run_blog_generate,
+    #     CronTrigger(hour=8, minute=15),
+    #     id="blog_generate",
+    #     name="Daily blog generation",
+    # )
 
     # Periodic regulatory poll every 10 hours
     scheduler.add_job(
