@@ -53,12 +53,28 @@ def test_step1_refresh_audit(mock_decaying_post):
     assert audit["broken_links_simulated"][0] == "https://example.com/broken-page"
 
 @pytest.mark.asyncio
-async def test_step2_and_3_targeted_regeneration(mock_decaying_post):
+async def test_step2_and_3_targeted_regeneration(mock_decaying_post, mocker):
+    from unittest.mock import AsyncMock
+    import json
+    
     audit = {
         "existing_sections": ["The Old Stat Section", "Unchanged Section"],
         "broken_links_simulated": ["https://example.com/broken-page"]
     }
     context = {"emerging_topics": ["New AI Rules"]}
+
+    # Mock model router response to return the expected brief offline
+    mocker.patch(
+        "src.engines.model_router.ModelRouter.generate_with_fallback",
+        AsyncMock(return_value=(json.dumps({
+            "sections_to_update": ["The Old Stat Section"],
+            "new_sections_to_add": ["New AI Rules"],
+            "links_to_fix": [],
+            "new_internal_links": [],
+            "statistics_to_update": [],
+            "new_paa_questions": []
+        }), False))
+    )
 
     brief = await step2_generate_refresh_brief(audit, context)
 

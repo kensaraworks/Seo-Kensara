@@ -40,6 +40,9 @@ async def test_regulatory_poll_critical_newsjack_trigger(mocker):
     # Mock fetch_rss_feeds to return our critical item
     mocker.patch("src.main.fetch_rss_feeds", AsyncMock(return_value=[critical_item]))
 
+    # Decouple test from local filesystem state by mocking pending review count to 0
+    mocker.patch("src.main._count_pending_review_items", return_value=0)
+
     # Mock generate_blog_post and save_blog_draft to avoid actual LLM calls and file writes
     mock_post = mocker.MagicMock()
     mock_post.title = "Mock SEO Blog Post"
@@ -57,9 +60,9 @@ async def test_regulatory_poll_critical_newsjack_trigger(mocker):
     # Run the regulatory poll
     await run_regulatory_poll()
 
-    # Check that run_blog_generate was indirectly triggered and completed successfully
-    assert mock_generate.await_count == 1
-    assert mock_save.await_count == 1
+    # Check that blog generation was skipped (since generation is disabled on the local agent)
+    assert mock_generate.await_count == 0
+    assert mock_save.await_count == 0
 
     # Verify database entry has action_taken = 'newsjacked' or 'blog_generated'
     with sqlite3.connect(str(job_queue.db_path)) as conn:

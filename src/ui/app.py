@@ -72,19 +72,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-REQUIRED_ENV_VARS = ["GROQ_API_KEY", "NVIDIA_API_KEY", "TAVILY_API_KEY", "SERPER_API_KEY"]
-
-
-def _validate_required_env_vars() -> None:
-    """Fail fast at startup when required API keys are missing."""
-    missing = [var for var in REQUIRED_ENV_VARS if not os.environ.get(var)]
-    if missing:
-        raise RuntimeError(
-            "Cannot start KensaraAI SEO Agent. "
-            f"Missing required environment variables: {missing}. "
-            "Set these in your .env file."
-        )
-
 
 def _ensure_drafts_structure() -> None:
     """Create required drafts directory structure on startup."""
@@ -169,7 +156,6 @@ def _sync_page_summaries_to_content_performance(page_summaries: list) -> int:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _validate_required_env_vars()
     _ensure_drafts_structure()
     init_gsc_tables()
 

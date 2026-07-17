@@ -3,7 +3,7 @@ services:
     name: kensarai-seo-agent
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.ui.app:app --host 0.0.0.0 --port $PORT
+    startCommand: bash start.sh
     envVars:
       - key: GROQ_API_KEY
         sync: false
