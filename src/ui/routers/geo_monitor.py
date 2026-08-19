@@ -9,8 +9,12 @@ from fastapi.templating import Jinja2Templates
 
 from src.ui.dashboard_data import get_geo_monitor_summary, get_geo_monitor_details
 
+from pathlib import Path
+
 router = APIRouter()
-templates = Jinja2Templates(directory="src/ui/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
 
 
 @router.get("/geo-monitor/", response_class=HTMLResponse)

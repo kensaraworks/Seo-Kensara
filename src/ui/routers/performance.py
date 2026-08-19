@@ -19,8 +19,12 @@ from src.ui.dashboard_data import (
     get_source_health,
 )
 
+from pathlib import Path
+
 router = APIRouter()
-templates = Jinja2Templates(directory="src/ui/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
 
 
 @router.get("/performance/", response_class=HTMLResponse)

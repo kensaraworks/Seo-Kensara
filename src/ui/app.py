@@ -305,7 +305,9 @@ app.add_middleware(AuthMiddleware)
 _STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-templates = Jinja2Templates(directory="src/ui/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
 
 # ── Auth routes ───────────────────────────────────────────────────────────────
 

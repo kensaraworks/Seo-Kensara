@@ -13,8 +13,9 @@ from fastapi.templating import Jinja2Templates
 
 log = structlog.get_logger()
 
-router = APIRouter(prefix="/queue", tags=["queue"])
-templates = Jinja2Templates(directory="src/ui/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
 
 from src.config import settings
 from src.engines.content_calendar import sort_pending_review_items

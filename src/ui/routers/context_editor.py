@@ -12,8 +12,9 @@ from fastapi.templating import Jinja2Templates
 
 log = structlog.get_logger()
 
-router = APIRouter(prefix="/context", tags=["context"])
-templates = Jinja2Templates(directory="src/ui/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
 
 DRAFTS_ROOT = Path("drafts")
 STATS_PATH = DRAFTS_ROOT / ".cache" / "platform_stats.json"

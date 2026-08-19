@@ -17,8 +17,9 @@ from src.ui.dashboard_data import (
     get_enforcement_tracker_meta,
 )
 
-router = APIRouter()
-templates = Jinja2Templates(directory="src/ui/templates")
+_TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
 
 _CACHE = Path("drafts/.cache")
 
