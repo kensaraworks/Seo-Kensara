@@ -1,8 +1,24 @@
 """KensaraAI SEO Agent — main scheduler entry point."""
 import asyncio
-from datetime import date
 import hashlib
 import json
+import os
+import sys
+import io
+from datetime import date
+
+# Force UTF-8 encoding on standard I/O streams to prevent Windows 'charmap' codec errors
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from pathlib import Path
 import re
 import sqlite3

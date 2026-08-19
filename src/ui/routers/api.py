@@ -355,7 +355,7 @@ async def check_full_health(request: Request):
     try:
         blogs_dir.mkdir(parents=True, exist_ok=True)
         test_file = blogs_dir / ".health_check_temp"
-        test_file.write_text("health_check")
+        test_file.write_text("health_check", encoding="utf-8")
         test_file.unlink()
         disk_ok = True
     except Exception as e:

@@ -339,13 +339,29 @@ def _write_token_cost_log(
     cluster_id: str,
     task: str,
 ) -> None:
-    """Append one row to token_cost_log.
+    """Append one row to token_cost_log in Supabase (with SQLite fallback)."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    # 1. Supabase integration
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            SupabaseDB.insert_sync(
+                "token_cost_log",
+                {
+                    "job_id": job_id,
+                    "model_name": model_used,
+                    "provider": "nvidia" if "mistral" in model_used or "deepseek" in model_used or "qwen" in model_used else "groq",
+                    "prompt_tokens": input_tokens,
+                    "completion_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                    "estimated_cost_usd": round(cost_usd, 6),
+                    "recorded_at": now_iso,
+                },
+            )
+    except Exception as exc:
+        log.warning("supabase_token_cost_log_failed", error=str(exc))
 
-    Schema per spec 2.9.B:
-        (job_id, model_used, input_tokens, output_tokens, cost_usd,
-         timestamp, tier, cluster_id)
-    Extended with 'task' for debugging which pipeline step consumed what.
-    """
+    # 2. SQLite local fallback
     try:
         conn = sqlite3.connect(_db_path())
         cur = conn.cursor()
@@ -370,7 +386,7 @@ def _write_token_cost_log(
                 input_tokens,
                 output_tokens,
                 round(cost_usd, 8),
-                datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                now_iso,
                 tier,
                 cluster_id,
                 task,
@@ -387,11 +403,29 @@ def _write_token_cost_log(
 
 
 def get_job_cost_summary(job_id: str) -> dict:
-    """Read aggregate token usage for a completed job from the SQLite log.
+    """Read aggregate token usage for a completed job from Supabase or SQLite."""
+    # 1. Try Supabase
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync("token_cost_log", filters={"job_id": f"eq.{job_id}"})
+            if rows:
+                call_count = len(rows)
+                total_in = sum(r.get("prompt_tokens", 0) for r in rows)
+                total_out = sum(r.get("completion_tokens", 0) for r in rows)
+                total_cost = sum(float(r.get("estimated_cost_usd", 0.0)) for r in rows)
+                return {
+                    "job_id": job_id,
+                    "call_count": call_count,
+                    "total_input_tokens": total_in,
+                    "total_output_tokens": total_out,
+                    "total_cost_usd": round(total_cost, 6),
+                    "total_cost_inr": round(total_cost * 84, 2),
+                }
+    except Exception as exc:
+        log.warning("supabase_get_job_cost_failed", error=str(exc))
 
-    Returns a dict with: job_id, call_count, total_input_tokens,
-    total_output_tokens, total_cost_usd, cost_inr (at approximate rate).
-    """
+    # 2. Fallback to SQLite
     try:
         conn = sqlite3.connect(_db_path())
         cur = conn.cursor()
@@ -415,12 +449,18 @@ def get_job_cost_summary(job_id: str) -> dict:
             "total_input_tokens": row[1] or 0,
             "total_output_tokens": row[2] or 0,
             "total_cost_usd": cost_usd,
-            # Spec target: < ₹5 per blog post (≈ $0.06). Report both currencies.
             "total_cost_inr": round(cost_usd * 84, 2),
         }
     except Exception as exc:
         log.error("get_job_cost_summary_failed", job_id=job_id, error=str(exc))
-        return {}
+        return {
+            "job_id": job_id,
+            "call_count": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "total_cost_usd": 0.0,
+            "total_cost_inr": 0.0,
+        }
     finally:
         try:
             conn.close()

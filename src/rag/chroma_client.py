@@ -42,10 +42,7 @@ def get_or_create_collection(collection_key: str) -> chromadb.Collection:
     )
 
 def upsert_chunks(collection_key: str, documents: List[str], ids: List[str], metadatas: List[Dict]) -> None:
-    """
-    Upsert document chunks. Upsert = insert if new, update if ID exists.
-    ALWAYS use upsert, never add — adding fails if ID already exists.
-    """
+    """Upsert document chunks into ChromaDB and Supabase rag_embeddings."""
     if not documents or not ids or len(documents) != len(ids) or len(documents) != len(metadatas):
         raise ValueError("documents, ids, and metadatas lists must be of the same length and non-empty.")
         
@@ -56,25 +53,58 @@ def upsert_chunks(collection_key: str, documents: List[str], ids: List[str], met
         metadatas=metadatas
     )
 
+    # Sync to Supabase rag_embeddings table
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows_to_upsert = [
+                {
+                    "id": chunk_id,
+                    "collection_key": collection_key,
+                    "document": doc,
+                    "metadata": meta,
+                }
+                for chunk_id, doc, meta in zip(ids, documents, metadatas)
+            ]
+            SupabaseDB.upsert_sync("rag_embeddings", rows_to_upsert, on_conflict="id")
+    except Exception as exc:
+        pass
+
+
 def delete_by_ids(collection_key: str, ids: List[str]) -> None:
-    """Delete specific chunks by their IDs. Used during content refresh."""
+    """Delete specific chunks by their IDs from ChromaDB and Supabase."""
     if not ids:
         return
     collection = get_or_create_collection(collection_key)
     collection.delete(ids=ids)
 
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            for chunk_id in ids:
+                SupabaseDB.delete_sync("rag_embeddings", filters={"id": f"eq.{chunk_id}"})
+    except Exception:
+        pass
+
+
 def delete_by_metadata(collection_key: str, where: Dict) -> None:
-    """
-    Delete all chunks matching a metadata filter.
-    Example: delete all chunks for a specific post URL
-    """
+    """Delete all chunks matching a metadata filter."""
     collection = get_or_create_collection(collection_key)
-    # Get IDs first (ChromaDB delete needs IDs, not metadata filter directly)
     results = collection.get(where=where)
     if results and "ids" in results and results["ids"]:
-        collection.delete(ids=results["ids"])
+        delete_by_ids(collection_key, results["ids"])
+
 
 def count_chunks(collection_key: str) -> int:
-    """Returns total chunk count for a collection. For monitoring."""
+    """Returns total chunk count for a collection."""
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync("rag_embeddings", select="id", filters={"collection_key": f"eq.{collection_key}"})
+            if rows:
+                return len(rows)
+    except Exception:
+        pass
     collection = get_or_create_collection(collection_key)
     return collection.count()
+

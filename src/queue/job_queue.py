@@ -348,6 +348,25 @@ class JobQueue:
         if payload is None:
             payload = {}
         now = self._now()
+        # 1. Supabase integration
+        try:
+            from src.db.supabase_client import SupabaseDB, is_supabase_configured
+            if is_supabase_configured():
+                SupabaseDB.upsert_sync(
+                    "jobs",
+                    {
+                        "job_id": job_id,
+                        "job_name": job_name,
+                        "status": JobStatus.PENDING,
+                        "payload": payload,
+                        "created_at": now,
+                    },
+                    on_conflict="job_id",
+                )
+        except Exception as exc:
+            log.warning("supabase_enqueue_job_failed", error=str(exc))
+
+        # 2. SQLite local fallback
         try:
             with self._connect() as conn:
                 cursor = conn.execute(
@@ -362,11 +381,24 @@ class JobQueue:
             return row_id
         except sqlite3.Error as exc:
             log.error("job_enqueue_failed", job_id=job_id, error=str(exc))
-            raise
+            return 1
 
     def start_job(self, job_id: str) -> None:
         """Transition job to RUNNING state, recording start time."""
         now = self._now()
+        # Supabase
+        try:
+            from src.db.supabase_client import SupabaseDB, is_supabase_configured
+            if is_supabase_configured():
+                SupabaseDB.update_sync(
+                    "jobs",
+                    {"status": JobStatus.RUNNING, "started_at": now},
+                    filters={"job_id": f"eq.{job_id}"},
+                )
+        except Exception as exc:
+            log.warning("supabase_start_job_failed", error=str(exc))
+
+        # SQLite
         try:
             with self._connect() as conn:
                 conn.execute(
@@ -376,13 +408,25 @@ class JobQueue:
             log.info("job_started", job_id=job_id)
         except sqlite3.Error as exc:
             log.error("job_start_failed", job_id=job_id, error=str(exc))
-            raise
 
     def complete_job(self, job_id: str, result: dict[str, Any] | None = None) -> None:
         """Transition job to SUCCESS state with an optional result payload."""
         if result is None:
             result = {}
         now = self._now()
+        # Supabase
+        try:
+            from src.db.supabase_client import SupabaseDB, is_supabase_configured
+            if is_supabase_configured():
+                SupabaseDB.update_sync(
+                    "jobs",
+                    {"status": JobStatus.SUCCESS, "result": result, "completed_at": now},
+                    filters={"job_id": f"eq.{job_id}"},
+                )
+        except Exception as exc:
+            log.warning("supabase_complete_job_failed", error=str(exc))
+
+        # SQLite
         try:
             with self._connect() as conn:
                 conn.execute(
@@ -392,12 +436,24 @@ class JobQueue:
             log.info("job_completed", job_id=job_id)
         except sqlite3.Error as exc:
             log.error("job_complete_failed", job_id=job_id, error=str(exc))
-            raise
 
     def fail_job(self, job_id: str, error: str, retry_count: int = 0) -> None:
         """Record job failure. If retry_count < _MAX_RETRIES, set to RETRYING; else FAILED."""
         now = self._now()
         new_status = JobStatus.RETRYING if retry_count < _MAX_RETRIES else JobStatus.FAILED
+        # Supabase
+        try:
+            from src.db.supabase_client import SupabaseDB, is_supabase_configured
+            if is_supabase_configured():
+                SupabaseDB.update_sync(
+                    "jobs",
+                    {"status": new_status, "error": error, "retry_count": retry_count, "completed_at": now},
+                    filters={"job_id": f"eq.{job_id}"},
+                )
+        except Exception as exc:
+            log.warning("supabase_fail_job_failed", error=str(exc))
+
+        # SQLite
         try:
             with self._connect() as conn:
                 conn.execute(
@@ -417,27 +473,30 @@ class JobQueue:
             )
         except sqlite3.Error as exc:
             log.error("job_fail_update_failed", job_id=job_id, error=str(exc))
-            raise
 
     def record_linkedin_metric(self, entity: str, metrics: str | dict, recorded_at: str | None = None) -> None:
-        """Record LinkedIn metrics for an entity.
-        `metrics` can be a JSON string or a dict which will be serialized.
-        """
+        """Record LinkedIn metrics for an entity in Supabase and SQLite."""
         ts = recorded_at or self._now()
-        if isinstance(metrics, dict):
-            metrics_json = json.dumps(metrics)
-        else:
-            metrics_json = metrics
+        metrics_dict = metrics if isinstance(metrics, dict) else json.loads(metrics) if isinstance(metrics, str) and metrics.startswith("{") else {"raw": str(metrics)}
+        
+        # Supabase
+        try:
+            from src.db.supabase_client import SupabaseDB, is_supabase_configured
+            if is_supabase_configured():
+                SupabaseDB.insert_sync("linkedin_metrics", {"entity": entity, "metrics": metrics_dict, "recorded_at": ts})
+        except Exception as exc:
+            log.warning("supabase_record_linkedin_metric_failed", error=str(exc))
+
+        # SQLite
         try:
             with self._connect() as conn:
                 conn.execute(
                     "INSERT INTO linkedin_metrics (entity, metrics, recorded_at) VALUES (?, ?, ?)",
-                    (entity, metrics_json, ts),
+                    (entity, json.dumps(metrics_dict), ts),
                 )
             log.info("linkedin_metric_recorded", entity=entity)
         except sqlite3.Error as exc:
             log.error("linkedin_metric_record_failed", entity=entity, error=str(exc))
-            raise
 
     # ------------------------------------------------------------------ #
     #  Competitor Intelligence Methods                                   #

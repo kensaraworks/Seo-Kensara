@@ -122,7 +122,23 @@ def _collect_all_items(status_filter: list[str] | None = None) -> list[dict]:
 
 
 def _append_activity(action: str, title: str, content_type: str) -> None:
-    """Append an entry to activity_log.json."""
+    """Append an entry to Supabase activity_log table with JSON fallback."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    entry = {
+        "action": action,
+        "item": title[:80],
+        "status": "completed",
+        "details": {"type": content_type, "timestamp": now_str},
+    }
+    # 1. Supabase Integration
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            SupabaseDB.insert_sync("activity_log", entry)
+    except Exception as exc:
+        pass
+
+    # 2. Local JSON fallback
     log_path = DRAFTS_ROOT / ".cache" / "activity_log.json"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -131,14 +147,14 @@ def _append_activity(action: str, title: str, content_type: str) -> None:
         existing = []
     existing.append(
         {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "timestamp": now_str,
             "action": action,
             "title": title[:80],
             "type": content_type,
         }
     )
-    # Keep last 50 entries
     log_path.write_text(json.dumps(existing[-50:], indent=2), encoding="utf-8")
+
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────

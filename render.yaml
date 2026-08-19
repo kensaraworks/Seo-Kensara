@@ -25,7 +25,9 @@ services:
         value: daily
       - key: TZ
         value: Asia/Kolkata
+      - key: DATA_DIR
+        value: /app/persistent
     disk:
       name: drafts
-      mountPath: /app/drafts
+      mountPath: /app/persistent
       sizeGB: 1

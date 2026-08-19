@@ -93,12 +93,25 @@ def get_confirmed_precedents(sector: str | None = None, limit: int = 3) -> list[
 
 
 def _load_tracker() -> dict[str, Any]:
-    """Load the enforcement tracker JSON from disk."""
+    """Load enforcement tracker JSON from Supabase or disk fallback."""
+    # 1. Supabase integration
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync("platform_stats", filters={"key": "eq.enforcement_tracker"})
+            if rows and "value" in rows[0]:
+                log.info("supabase_enforcement_tracker_loaded")
+                return rows[0]["value"]
+    except Exception as exc:
+        log.warning("supabase_load_tracker_failed", error=str(exc))
+
+    # 2. Disk fallback
     if not TRACKER_PATH.exists():
-        raise FileNotFoundError(
-            f"Enforcement tracker not found at {TRACKER_PATH}. "
-            "Ensure data/enforcement_tracker.json exists."
-        )
+        default_tr = Path("data/enforcement_tracker.json")
+        if default_tr.exists():
+            return json.loads(default_tr.read_text(encoding="utf-8"))
+        return {"metadata": {}, "pre_dpdpa_actions": [], "cert_in_enforcement": [], "enforcement_actions": []}
+
     with TRACKER_PATH.open("r", encoding="utf-8") as f:
         data = json.load(f)
     log.info(
@@ -111,8 +124,23 @@ def _load_tracker() -> dict[str, Any]:
 
 
 def _save_tracker(data: dict[str, Any]) -> None:
-    """Save the enforcement tracker JSON to disk, updating metadata."""
+    """Save enforcement tracker JSON to Supabase and disk."""
     data["metadata"]["last_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    # 1. Supabase Integration
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            SupabaseDB.upsert_sync(
+                "platform_stats",
+                {"key": "enforcement_tracker", "value": data},
+                on_conflict="key",
+            )
+            log.info("supabase_enforcement_tracker_saved")
+    except Exception as exc:
+        log.warning("supabase_save_tracker_failed", error=str(exc))
+
+    # 2. Disk Fallback
     TRACKER_PATH.parent.mkdir(parents=True, exist_ok=True)
     with TRACKER_PATH.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)

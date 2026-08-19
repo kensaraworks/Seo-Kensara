@@ -94,22 +94,29 @@ persistent_base = Path(settings.data_dir).resolve()
 settings.content_output_dir = str(persistent_base / "drafts")
 
 # Ensure all subdirectories inside drafts exist
-for sub in ("blogs", "linkedin", "newsletters", "reports", "flagged", ".cache"):
-    Path(settings.content_output_dir, sub).mkdir(parents=True, exist_ok=True)
+try:
+    for sub in ("blogs", "linkedin", "newsletters", "reports", "flagged", ".cache"):
+        Path(settings.content_output_dir, sub).mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 # Centralize database path
 settings_database_path = str(Path(settings.content_output_dir) / ".cache" / "jobs.db")
 
 # Setup persistent enforcement tracker path
-tracker_dir = persistent_base / "data"
-tracker_dir.mkdir(parents=True, exist_ok=True)
-settings_enforcement_tracker_path = str(tracker_dir / "enforcement_tracker.json")
+try:
+    tracker_dir = persistent_base / "data"
+    tracker_dir.mkdir(parents=True, exist_ok=True)
+    settings_enforcement_tracker_path = str(tracker_dir / "enforcement_tracker.json")
 
-# Seed/copy default enforcement tracker if not present
-if not Path(settings_enforcement_tracker_path).exists():
-    default_tr = Path("data/enforcement_tracker.json")
-    if default_tr.exists():
-        shutil.copy(default_tr, settings_enforcement_tracker_path)
-    else:
-        Path(settings_enforcement_tracker_path).write_text("{}", encoding="utf-8")
+    # Seed/copy default enforcement tracker if not present
+    if not Path(settings_enforcement_tracker_path).exists():
+        default_tr = Path("data/enforcement_tracker.json")
+        if default_tr.exists():
+            shutil.copy(default_tr, settings_enforcement_tracker_path)
+        else:
+            Path(settings_enforcement_tracker_path).write_text("{}", encoding="utf-8")
+except Exception:
+    settings_enforcement_tracker_path = "data/enforcement_tracker.json"
+
 

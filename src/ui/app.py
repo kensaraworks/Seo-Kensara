@@ -401,6 +401,18 @@ def _collect_drafts() -> list[dict]:
 
 
 def _load_job_history() -> dict:
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync("job_history", order="run_at.desc", limit=20)
+            if rows:
+                history = {}
+                for r in rows:
+                    j_id = r.get("job_id") or "unknown"
+                    history[j_id] = r
+                return history
+    except Exception:
+        pass
     cache_path = DRAFTS_ROOT / ".cache" / "job_history.json"
     try:
         return json.loads(cache_path.read_text(encoding="utf-8"))
@@ -409,13 +421,31 @@ def _load_job_history() -> dict:
 
 
 def _load_activity_log() -> list[dict]:
-    """Return last 5 activity entries from activity_log.json."""
+    """Return last 5 activity entries from Supabase activity_log table."""
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync("activity_log", order="created_at.desc", limit=5)
+            if rows:
+                formatted = []
+                for r in rows:
+                    details = r.get("details") or {}
+                    formatted.append({
+                        "timestamp": details.get("timestamp") or r.get("created_at", "")[:16],
+                        "action": r.get("action", ""),
+                        "title": r.get("item", ""),
+                        "type": details.get("type", "system"),
+                    })
+                return formatted
+    except Exception:
+        pass
     log_path = DRAFTS_ROOT / ".cache" / "activity_log.json"
     try:
         data = json.loads(log_path.read_text(encoding="utf-8"))
         return data[-5:] if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError):
         return []
+
 
 
 # ── Dashboard route ────────────────────────────────────────────────────────────

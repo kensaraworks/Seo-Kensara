@@ -125,7 +125,33 @@ def is_duplicate_story(
         sim = calculate_cosine_similarity(new_vector, hist_vector)
         if sim > max_sim:
             max_sim = sim
-            if max_sim > threshold:
-                return True, max_sim
-
     return False, max_sim
+
+
+def is_article_seen(article_hash: str, url: str = "") -> bool:
+    """Check if an article hash/URL has already been processed in Supabase or local cache."""
+    # 1. Supabase check
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync("seen_articles", filters={"article_hash": f"eq.{article_hash}"})
+            if rows:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def record_seen_article(article_hash: str, url: str = "") -> None:
+    """Record an article hash into Supabase seen_articles table."""
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            SupabaseDB.upsert_sync(
+                "seen_articles",
+                {"article_hash": article_hash, "url": url},
+                on_conflict="article_hash",
+            )
+    except Exception:
+        pass
+

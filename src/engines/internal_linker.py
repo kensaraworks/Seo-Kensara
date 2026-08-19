@@ -97,40 +97,86 @@ def register_post(
 ) -> str:
     """Register a newly published or updated post in the link map.
     
-    Returns the post_id.
-    Auto-updated on every publish/refresh (spec 2.5.A).
+    Returns the post_id. Auto-updated on every publish/refresh (spec 2.5.A).
     """
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    conn = get_connection(db_path)
-    with conn:
-        # Check if post already exists
-        existing = conn.execute(
-            "SELECT post_id FROM internal_link_map WHERE post_url = ?", (post_url,)
-        ).fetchone()
-        if existing:
-            conn.execute(
-                """UPDATE internal_link_map
-                   SET post_title=?, primary_keyword=?, cluster_id=?,
-                       intent_type=?, tier=?, is_pillar=?, date_updated=?
-                   WHERE post_url=?""",
-                (post_title, primary_keyword, cluster_id, intent_type,
-                 tier, int(is_pillar), now, post_url)
-            )
-            post_id = existing["post_id"]
-            log.info("link_map_post_updated", post_url=post_url)
-        else:
-            post_id = str(uuid.uuid4())
-            conn.execute(
-                """INSERT INTO internal_link_map
-                   (post_id, post_url, post_title, primary_keyword,
-                    cluster_id, intent_type, tier, date_published,
-                    date_updated, is_pillar)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (post_id, post_url, post_title, primary_keyword,
-                 cluster_id, intent_type, tier, now, now, int(is_pillar))
-            )
-            log.info("link_map_post_registered", post_url=post_url, post_id=post_id)
-    conn.close()
+    post_id = str(uuid.uuid4())
+
+    # 1. Supabase Integration
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            existing = SupabaseDB.select_sync("internal_link_map", filters={"post_url": f"eq.{post_url}"})
+            if existing:
+                post_id = existing[0].get("post_id", post_id)
+                SupabaseDB.update_sync(
+                    "internal_link_map",
+                    {
+                        "post_title": post_title,
+                        "primary_keyword": primary_keyword,
+                        "cluster_id": cluster_id,
+                        "intent_type": intent_type,
+                        "tier": tier,
+                        "is_pillar": int(is_pillar),
+                        "date_updated": now,
+                    },
+                    filters={"post_url": f"eq.{post_url}"},
+                )
+                log.info("supabase_link_map_post_updated", post_url=post_url)
+            else:
+                SupabaseDB.upsert_sync(
+                    "internal_link_map",
+                    {
+                        "post_id": post_id,
+                        "post_url": post_url,
+                        "post_title": post_title,
+                        "primary_keyword": primary_keyword,
+                        "cluster_id": cluster_id,
+                        "intent_type": intent_type,
+                        "tier": tier,
+                        "date_published": now,
+                        "date_updated": now,
+                        "is_pillar": int(is_pillar),
+                        "incoming_link_count": 0,
+                        "outgoing_link_count": 0,
+                    },
+                    on_conflict="post_id",
+                )
+                log.info("supabase_link_map_post_registered", post_url=post_url, post_id=post_id)
+    except Exception as exc:
+        log.warning("supabase_register_post_failed", error=str(exc))
+
+    # 2. SQLite local fallback
+    try:
+        conn = get_connection(db_path)
+        with conn:
+            existing = conn.execute(
+                "SELECT post_id FROM internal_link_map WHERE post_url = ?", (post_url,)
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """UPDATE internal_link_map
+                       SET post_title=?, primary_keyword=?, cluster_id=?,
+                           intent_type=?, tier=?, is_pillar=?, date_updated=?
+                       WHERE post_url=?""",
+                    (post_title, primary_keyword, cluster_id, intent_type,
+                     tier, int(is_pillar), now, post_url)
+                )
+                post_id = existing["post_id"]
+            else:
+                conn.execute(
+                    """INSERT INTO internal_link_map
+                       (post_id, post_url, post_title, primary_keyword,
+                        cluster_id, intent_type, tier, date_published,
+                        date_updated, is_pillar)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (post_id, post_url, post_title, primary_keyword,
+                     cluster_id, intent_type, tier, now, now, int(is_pillar))
+                )
+        conn.close()
+    except Exception as exc:
+        log.error("sqlite_register_post_failed", error=str(exc))
+
     return post_id
 
 
@@ -138,71 +184,146 @@ def increment_link_counts(
     from_url: str, to_url: str, db_path: str = _DEFAULT_DB_PATH
 ) -> None:
     """Increment outgoing count on from_url and incoming count on to_url."""
-    conn = get_connection(db_path)
-    with conn:
-        conn.execute(
-            "UPDATE internal_link_map SET outgoing_link_count = outgoing_link_count + 1 WHERE post_url = ?",
-            (from_url,)
-        )
-        conn.execute(
-            "UPDATE internal_link_map SET incoming_link_count = incoming_link_count + 1 WHERE post_url = ?",
-            (to_url,)
-        )
-    conn.close()
+    # Supabase
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            from_rows = SupabaseDB.select_sync("internal_link_map", filters={"post_url": f"eq.{from_url}"})
+            if from_rows:
+                curr_out = from_rows[0].get("outgoing_link_count", 0)
+                SupabaseDB.update_sync("internal_link_map", {"outgoing_link_count": curr_out + 1}, filters={"post_url": f"eq.{from_url}"})
+            to_rows = SupabaseDB.select_sync("internal_link_map", filters={"post_url": f"eq.{to_url}"})
+            if to_rows:
+                curr_in = to_rows[0].get("incoming_link_count", 0)
+                SupabaseDB.update_sync("internal_link_map", {"incoming_link_count": curr_in + 1}, filters={"post_url": f"eq.{to_url}"})
+    except Exception as exc:
+        log.warning("supabase_increment_counts_failed", error=str(exc))
+
+    # SQLite
+    try:
+        conn = get_connection(db_path)
+        with conn:
+            conn.execute(
+                "UPDATE internal_link_map SET outgoing_link_count = outgoing_link_count + 1 WHERE post_url = ?",
+                (from_url,)
+            )
+            conn.execute(
+                "UPDATE internal_link_map SET incoming_link_count = incoming_link_count + 1 WHERE post_url = ?",
+                (to_url,)
+            )
+        conn.close()
+    except Exception:
+        pass
 
 
 def query_cluster_posts(
     cluster_id: str, exclude_keyword: str = "", db_path: str = _DEFAULT_DB_PATH
 ) -> list[dict]:
     """Return all posts in a cluster, excluding the current post's keyword."""
-    conn = get_connection(db_path)
-    rows = conn.execute(
-        """SELECT post_url, post_title, primary_keyword, is_pillar, tier
-           FROM internal_link_map
-           WHERE cluster_id = ? AND primary_keyword != ?
-           ORDER BY is_pillar DESC, incoming_link_count DESC""",
-        (cluster_id, exclude_keyword)
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            filters = {"cluster_id": f"eq.{cluster_id}"}
+            if exclude_keyword:
+                filters["primary_keyword"] = f"neq.{exclude_keyword}"
+            rows = SupabaseDB.select_sync(
+                "internal_link_map",
+                select="post_url, post_title, primary_keyword, is_pillar, tier",
+                filters=filters,
+                order="is_pillar.desc,incoming_link_count.desc",
+            )
+            if rows:
+                return rows
+    except Exception:
+        pass
+
+    try:
+        conn = get_connection(db_path)
+        rows = conn.execute(
+            """SELECT post_url, post_title, primary_keyword, is_pillar, tier
+               FROM internal_link_map
+               WHERE cluster_id = ? AND primary_keyword != ?
+               ORDER BY is_pillar DESC, incoming_link_count DESC""",
+            (cluster_id, exclude_keyword)
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 
 
 def query_pillar_for_cluster(cluster_id: str, db_path: str = _DEFAULT_DB_PATH) -> Optional[dict]:
     """Return the pillar page record for a given cluster, or None if not yet generated."""
-    conn = get_connection(db_path)
-    row = conn.execute(
-        "SELECT * FROM internal_link_map WHERE cluster_id = ? AND is_pillar = 1 LIMIT 1",
-        (cluster_id,)
-    ).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync(
+                "internal_link_map",
+                filters={"cluster_id": f"eq.{cluster_id}", "is_pillar": "eq.1"},
+                limit=1,
+            )
+            if rows:
+                return rows[0]
+    except Exception:
+        pass
+
+    try:
+        conn = get_connection(db_path)
+        row = conn.execute(
+            "SELECT * FROM internal_link_map WHERE cluster_id = ? AND is_pillar = 1 LIMIT 1",
+            (cluster_id,)
+        ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception:
+        return None
 
 
 def query_relevant_tier1_or_2_post(
     keyword: str, cluster_id: str, db_path: str = _DEFAULT_DB_PATH
 ) -> Optional[dict]:
-    """Find the most relevant Tier 1 or 2 post for a Tier 3 newsjack.
-    
-    Prefers same cluster. Falls back to highest incoming_link_count globally.
-    """
-    conn = get_connection(db_path)
-    # Same cluster first
-    row = conn.execute(
-        """SELECT * FROM internal_link_map
-           WHERE cluster_id = ? AND tier IN (1, 2)
-           ORDER BY incoming_link_count DESC LIMIT 1""",
-        (cluster_id,)
-    ).fetchone()
-    if not row:
-        # Fall back to any T1/T2 post
+    """Find the most relevant Tier 1 or 2 post for a Tier 3 newsjack."""
+    try:
+        from src.db.supabase_client import SupabaseDB, is_supabase_configured
+        if is_supabase_configured():
+            rows = SupabaseDB.select_sync(
+                "internal_link_map",
+                filters={"cluster_id": f"eq.{cluster_id}", "tier": "in.(1,2)"},
+                order="incoming_link_count.desc",
+                limit=1,
+            )
+            if rows:
+                return rows[0]
+            rows = SupabaseDB.select_sync(
+                "internal_link_map",
+                filters={"tier": "in.(1,2)", "primary_keyword": f"neq.{keyword}"},
+                order="incoming_link_count.desc",
+                limit=1,
+            )
+            if rows:
+                return rows[0]
+    except Exception:
+        pass
+
+    try:
+        conn = get_connection(db_path)
         row = conn.execute(
             """SELECT * FROM internal_link_map
-               WHERE tier IN (1, 2) AND primary_keyword != ?
+               WHERE cluster_id = ? AND tier IN (1, 2)
                ORDER BY incoming_link_count DESC LIMIT 1""",
-            (keyword,)
+            (cluster_id,)
         ).fetchone()
-    conn.close()
-    return dict(row) if row else None
+        if not row:
+            row = conn.execute(
+                """SELECT * FROM internal_link_map
+                   WHERE tier IN (1, 2) AND primary_keyword != ?
+                   ORDER BY incoming_link_count DESC LIMIT 1""",
+                (keyword,)
+            ).fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception:
+        return None
 
 
 def validate_optional_link(suggested_url: str, current_keyword: str, db_path: str = _DEFAULT_DB_PATH) -> Optional[dict]:
