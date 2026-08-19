@@ -512,39 +512,42 @@ def init_gsc_tables(db_path: str | None = None) -> None:
         from src.config import settings_database_path
         db_path = settings_database_path
 
-
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS gsc_query_performance (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            query       TEXT NOT NULL,
-            page_url    TEXT NOT NULL,
-            clicks      INTEGER DEFAULT 0,
-            impressions INTEGER DEFAULT 0,
-            ctr         REAL DEFAULT 0.0,
-            position    REAL DEFAULT 0.0,
-            date_synced TEXT NOT NULL,
-            date_range_start TEXT NOT NULL,
-            date_range_end   TEXT NOT NULL,
-            UNIQUE (query, page_url, date_synced)
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gsc_query_performance (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                query       TEXT NOT NULL,
+                page_url    TEXT NOT NULL,
+                clicks      INTEGER DEFAULT 0,
+                impressions INTEGER DEFAULT 0,
+                ctr         REAL DEFAULT 0.0,
+                position    REAL DEFAULT 0.0,
+                date_synced TEXT NOT NULL,
+                date_range_start TEXT NOT NULL,
+                date_range_end   TEXT NOT NULL,
+                UNIQUE (query, page_url, date_synced)
+            )
+            """
         )
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_gsc_impressions
-        ON gsc_query_performance (impressions DESC)
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_gsc_position
-        ON gsc_query_performance (position)
-        """
-    )
-    conn.commit()
-    conn.close()
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_gsc_impressions
+            ON gsc_query_performance (impressions DESC)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_gsc_position
+            ON gsc_query_performance (position)
+            """
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        log.warning("init_gsc_tables_warning", error=str(exc))
+
 
 
 gsc_client = SearchConsoleClient()

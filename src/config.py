@@ -87,8 +87,23 @@ settings = Settings()
 # ── Dynamic Persistence Resolution ───────────────────────────────────────────
 from pathlib import Path
 import shutil
+import tempfile
+import os
+
+# Auto-detect Vercel or AWS Lambda serverless execution environment
+if os.getenv("VERCEL") == "1" or os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+    if settings.data_dir == ".":
+        settings.data_dir = "/tmp"
 
 persistent_base = Path(settings.data_dir).resolve()
+
+# Fallback to system temp directory (/tmp) if persistent_base is read-only
+try:
+    test_file = persistent_base / ".perm_check"
+    test_file.write_text("ok", encoding="utf-8")
+    test_file.unlink(missing_ok=True)
+except Exception:
+    persistent_base = Path(tempfile.gettempdir()).resolve()
 
 # Update content_output_dir to point to persistent directory
 settings.content_output_dir = str(persistent_base / "drafts")
@@ -118,5 +133,6 @@ try:
             Path(settings_enforcement_tracker_path).write_text("{}", encoding="utf-8")
 except Exception:
     settings_enforcement_tracker_path = "data/enforcement_tracker.json"
+
 
 

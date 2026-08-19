@@ -75,205 +75,229 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 def _ensure_drafts_structure() -> None:
     """Create required drafts directory structure on startup."""
-    root = Path(settings.content_output_dir)
-    required_paths = [
-        root / "blogs",
-        root / "linkedin",
-        root / "newsletters",
-        root / "reports",
-        root / "flagged",
-        root / ".cache",
-    ]
-    for path in required_paths:
-        path.mkdir(parents=True, exist_ok=True)
+    try:
+        root = Path(settings.content_output_dir)
+        required_paths = [
+            root / "blogs",
+            root / "linkedin",
+            root / "newsletters",
+            root / "reports",
+            root / "flagged",
+            root / ".cache",
+        ]
+        for path in required_paths:
+            path.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        log.warning("ensure_drafts_structure_failed", error=str(exc))
 
 
 def _sync_page_summaries_to_content_performance(page_summaries: list) -> int:
     """Write page-level GSC summaries to content_performance with schema-safe upsert."""
     from src.config import settings_database_path
     db_path = Path(settings_database_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    conn = sqlite3.connect(str(db_path))
     try:
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(content_performance)").fetchall()}
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
-        for col_sql in (
-            "ALTER TABLE content_performance ADD COLUMN post_url TEXT",
-            "ALTER TABLE content_performance ADD COLUMN avg_position_30d REAL DEFAULT 0.0",
-            "ALTER TABLE content_performance ADD COLUMN avg_ctr_30d REAL DEFAULT 0.0",
-            "ALTER TABLE content_performance ADD COLUMN top_query TEXT DEFAULT ''",
-            "ALTER TABLE content_performance ADD COLUMN last_checked TEXT",
-        ):
-            col_name = col_sql.split("ADD COLUMN ", 1)[1].split(" ", 1)[0]
-            if col_name not in cols:
-                try:
-                    conn.execute(col_sql)
-                    cols.add(col_name)
-                except sqlite3.OperationalError:
-                    pass
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(content_performance)").fetchall()}
 
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_cp_post_url_unique ON content_performance(post_url)"
-        )
-
-        updated = 0
-        for summary in page_summaries:
-            page_url = getattr(summary, "page_url", "")
-            if not page_url:
-                continue
+            for col_sql in (
+                "ALTER TABLE content_performance ADD COLUMN post_url TEXT",
+                "ALTER TABLE content_performance ADD COLUMN avg_position_30d REAL DEFAULT 0.0",
+                "ALTER TABLE content_performance ADD COLUMN avg_ctr_30d REAL DEFAULT 0.0",
+                "ALTER TABLE content_performance ADD COLUMN top_query TEXT DEFAULT ''",
+                "ALTER TABLE content_performance ADD COLUMN last_checked TEXT",
+            ):
+                col_name = col_sql.split("ADD COLUMN ", 1)[1].split(" ", 1)[0]
+                if col_name not in cols:
+                    try:
+                        conn.execute(col_sql)
+                        cols.add(col_name)
+                    except sqlite3.OperationalError:
+                        pass
 
             conn.execute(
-                """
-                INSERT INTO content_performance
-                    (keyword, post_url, impressions_30d, clicks_30d, avg_position_30d,
-                     avg_ctr_30d, top_query, last_checked, recorded_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, date('now'), datetime('now'))
-                ON CONFLICT(post_url) DO UPDATE SET
-                    impressions_30d  = excluded.impressions_30d,
-                    clicks_30d       = excluded.clicks_30d,
-                    avg_position_30d = excluded.avg_position_30d,
-                    avg_ctr_30d      = excluded.avg_ctr_30d,
-                    top_query        = excluded.top_query,
-                    last_checked     = date('now')
-                """,
-                (
-                    page_url,
-                    page_url,
-                    getattr(summary, "impressions_30d", 0),
-                    getattr(summary, "clicks_30d", 0),
-                    getattr(summary, "avg_position_30d", 0.0),
-                    getattr(summary, "avg_ctr_30d", 0.0),
-                    getattr(summary, "top_query", ""),
-                ),
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_cp_post_url_unique ON content_performance(post_url)"
             )
-            updated += 1
 
-        conn.commit()
-        return updated
-    finally:
-        conn.close()
+            updated = 0
+            for summary in page_summaries:
+                page_url = getattr(summary, "page_url", "")
+                if not page_url:
+                    continue
+
+                conn.execute(
+                    """
+                    INSERT INTO content_performance
+                        (keyword, post_url, impressions_30d, clicks_30d, avg_position_30d,
+                         avg_ctr_30d, top_query, last_checked, recorded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, date('now'), datetime('now'))
+                    ON CONFLICT(post_url) DO UPDATE SET
+                        impressions_30d  = excluded.impressions_30d,
+                        clicks_30d       = excluded.clicks_30d,
+                        avg_position_30d = excluded.avg_position_30d,
+                        avg_ctr_30d      = excluded.avg_ctr_30d,
+                        top_query        = excluded.top_query,
+                        last_checked     = date('now')
+                    """,
+                    (
+                        page_url,
+                        page_url,
+                        getattr(summary, "impressions_30d", 0),
+                        getattr(summary, "clicks_30d", 0),
+                        getattr(summary, "avg_position_30d", 0.0),
+                        getattr(summary, "avg_ctr_30d", 0.0),
+                        getattr(summary, "top_query", ""),
+                    ),
+                )
+                updated += 1
+
+            conn.commit()
+            return updated
+        finally:
+            conn.close()
+    except Exception as exc:
+        log.warning("sync_page_summaries_failed", error=str(exc))
+        return 0
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _ensure_drafts_structure()
-    init_gsc_tables()
+    try:
+        _ensure_drafts_structure()
+    except Exception as exc:
+        log.warning("lifespan_drafts_structure_failed", error=str(exc))
 
-    async def run_gsc_sync() -> None:
-        if not gsc_client.is_configured():
-            log.warning("gsc_sync_skipped_not_configured")
-            return
+    try:
+        init_gsc_tables()
+    except Exception as exc:
+        log.warning("lifespan_init_gsc_failed", error=str(exc))
+
+    if os.getenv("VERCEL") != "1" and not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
         try:
-            log.info("gsc_sync_started")
-            page_summaries = gsc_client.get_blog_performance_30d()
-            updated_pages = _sync_page_summaries_to_content_performance(page_summaries)
+            async def run_gsc_sync() -> None:
+                if not gsc_client.is_configured():
+                    log.warning("gsc_sync_skipped_not_configured")
+                    return
+                try:
+                    log.info("gsc_sync_started")
+                    page_summaries = gsc_client.get_blog_performance_30d()
+                    updated_pages = _sync_page_summaries_to_content_performance(page_summaries)
 
-            query_rows = gsc_client.get_query_performance_30d(max_queries=500)
-            synced_queries = sync_gsc_query_data_to_db(query_rows)
+                    query_rows = gsc_client.get_query_performance_30d(max_queries=500)
+                    synced_queries = sync_gsc_query_data_to_db(query_rows)
 
-            log.info(
-                "gsc_sync_completed",
-                pages=len(page_summaries),
-                pages_updated=updated_pages,
-                query_rows=synced_queries,
+                    log.info(
+                        "gsc_sync_completed",
+                        pages=len(page_summaries),
+                        pages_updated=updated_pages,
+                        query_rows=synced_queries,
+                    )
+                except Exception as exc:
+                    log.error("gsc_sync_failed", error=str(exc), exc_info=True)
+
+            scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+            app.state.scheduler = scheduler
+
+            # Automatic background execution logger
+            from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+            from src.ui.routers.schedule import record_job_execution
+
+            def _on_job_executed(event):
+                job_id = event.job_id
+                item_count = 0
+                duration_ms = 0
+                latest_news = None
+                if isinstance(event.retval, dict):
+                    item_count = event.retval.get("count", 0)
+                    duration_ms = event.retval.get("duration_ms", 0)
+                    latest_news = event.retval.get("latest_news")
+                record_job_execution(
+                    job_id=job_id,
+                    status="ok",
+                    item_count=item_count,
+                    duration_ms=duration_ms,
+                    triggered_by="auto",
+                    latest_news=latest_news,
+                )
+
+            def _on_job_error(event):
+                job_id = event.job_id
+                record_job_execution(
+                    job_id=job_id,
+                    status="error",
+                    error=str(event.exception) if event.exception else "Execution error",
+                    triggered_by="auto",
+                )
+
+            scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
+            scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
+
+            scheduler.add_job(run_news_scan, CronTrigger(hour=8, minute=0), id="news_scan", name="Daily news scan")
+            scheduler.add_job(run_regulatory_poll, CronTrigger(hour="*/10", minute=0), id="regulatory_poll", name="Regulatory feed poll")
+            scheduler.add_job(
+                run_content_gap_check,
+                CronTrigger(hour=7, minute=45, timezone="Asia/Kolkata"),
+                id="content_gap_check",
+                replace_existing=True,
+                name="Daily content gap check",
             )
+            scheduler.add_job(
+                run_competitor_intelligence,
+                CronTrigger(day_of_week="mon", hour=6, minute=0, timezone="Asia/Kolkata"),
+                id="competitor_intelligence",
+                replace_existing=True,
+                name="Weekly competitor intelligence",
+            )
+            scheduler.add_job(
+                run_trending_monitors,
+                CronTrigger(hour=6, minute=30, timezone="Asia/Kolkata"),
+                id="trending_monitor",
+                replace_existing=True,
+                name="Daily trending monitor",
+            )
+            scheduler.add_job(
+                run_gsc_sync,
+                CronTrigger(day_of_week="sun", hour=7, minute=0, timezone="Asia/Kolkata"),
+                id="gsc_sync",
+                replace_existing=True,
+                name="Weekly GSC sync",
+            )
+            scheduler.add_job(
+                process_pending_refreshes,
+                CronTrigger(day_of_week="sun", hour=8, minute=0, timezone="Asia/Kolkata"),
+                id="content_refresh",
+                replace_existing=True,
+                name="Weekly content refresh queue drain",
+            )
+            scheduler.add_job(
+                run_feedback_loop_monthly,
+                CronTrigger(day=1, hour=4, minute=0, timezone="Asia/Kolkata"),
+                id="feedback_loop_monthly",
+                replace_existing=True,
+                name="Monthly content performance feedback loop",
+            )
+            scheduler.add_job(
+                update_enforcement_tracker,
+                CronTrigger(day_of_week="thu", hour=6, minute=0, timezone="Asia/Kolkata"),
+                id="enforcement_tracker_update",
+                replace_existing=True,
+                name="Weekly DPDPA enforcement tracker update",
+            )
+            scheduler.start()
+            log.info("seo_agent_started_via_fastapi", jobs=scheduler.get_jobs())
+            yield
+            scheduler.shutdown()
+            log.info("seo_agent_stopped")
+            return
         except Exception as exc:
-            log.error("gsc_sync_failed", error=str(exc), exc_info=True)
+            log.error("scheduler_startup_failed", error=str(exc))
 
-    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    app.state.scheduler = scheduler
-
-    # Automatic background execution logger
-    from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
-    from src.ui.routers.schedule import record_job_execution
-
-    def _on_job_executed(event):
-        job_id = event.job_id
-        item_count = 0
-        duration_ms = 0
-        latest_news = None
-        if isinstance(event.retval, dict):
-            item_count = event.retval.get("count", 0)
-            duration_ms = event.retval.get("duration_ms", 0)
-            latest_news = event.retval.get("latest_news")
-        record_job_execution(
-            job_id=job_id,
-            status="ok",
-            item_count=item_count,
-            duration_ms=duration_ms,
-            triggered_by="auto",
-            latest_news=latest_news,
-        )
-
-    def _on_job_error(event):
-        job_id = event.job_id
-        record_job_execution(
-            job_id=job_id,
-            status="error",
-            error=str(event.exception) if event.exception else "Execution error",
-            triggered_by="auto",
-        )
-
-    scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
-    scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
-
-    scheduler.add_job(run_news_scan, CronTrigger(hour=8, minute=0), id="news_scan", name="Daily news scan")
-    # scheduler.add_job(run_blog_generate, CronTrigger(hour=8, minute=15), id="blog_generate", name="Daily blog generation")
-    scheduler.add_job(run_regulatory_poll, CronTrigger(hour="*/10", minute=0), id="regulatory_poll", name="Regulatory feed poll")
-    scheduler.add_job(
-        run_content_gap_check,
-        CronTrigger(hour=7, minute=45, timezone="Asia/Kolkata"),
-        id="content_gap_check",
-        replace_existing=True,
-        name="Daily content gap check",
-    )
-    scheduler.add_job(
-        run_competitor_intelligence,
-        CronTrigger(day_of_week="mon", hour=6, minute=0, timezone="Asia/Kolkata"),
-        id="competitor_intelligence",
-        replace_existing=True,
-        name="Weekly competitor intelligence",
-    )
-    scheduler.add_job(
-        run_trending_monitors,
-        CronTrigger(hour=6, minute=30, timezone="Asia/Kolkata"),
-        id="trending_monitor",
-        replace_existing=True,
-        name="Daily trending monitor",
-    )
-    scheduler.add_job(
-        run_gsc_sync,
-        CronTrigger(day_of_week="sun", hour=7, minute=0, timezone="Asia/Kolkata"),
-        id="gsc_sync",
-        replace_existing=True,
-        name="Weekly GSC sync",
-    )
-    scheduler.add_job(
-        process_pending_refreshes,
-        CronTrigger(day_of_week="sun", hour=8, minute=0, timezone="Asia/Kolkata"),
-        id="content_refresh",
-        replace_existing=True,
-        name="Weekly content refresh queue drain",
-    )
-    scheduler.add_job(
-        run_feedback_loop_monthly,
-        CronTrigger(day=1, hour=4, minute=0, timezone="Asia/Kolkata"),
-        id="feedback_loop_monthly",
-        replace_existing=True,
-        name="Monthly content performance feedback loop",
-    )
-    scheduler.add_job(
-        update_enforcement_tracker,
-        CronTrigger(day_of_week="thu", hour=6, minute=0, timezone="Asia/Kolkata"),
-        id="enforcement_tracker_update",
-        replace_existing=True,
-        name="Weekly DPDPA enforcement tracker update",
-    )
-    scheduler.start()
-    log.info("seo_agent_started_via_fastapi", jobs=scheduler.get_jobs())
     yield
-    scheduler.shutdown()
-    log.info("seo_agent_stopped")
+
 
 app = FastAPI(title="KensaraAI Content Hub", version="1.0.0", lifespan=lifespan)
 app.add_middleware(AuthMiddleware)
