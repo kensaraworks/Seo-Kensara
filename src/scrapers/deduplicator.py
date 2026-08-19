@@ -125,7 +125,10 @@ def is_duplicate_story(
         sim = calculate_cosine_similarity(new_vector, hist_vector)
         if sim > max_sim:
             max_sim = sim
-    return False, max_sim
+
+    is_dup = max_sim >= threshold
+    return is_dup, max_sim
+
 
 
 def is_article_seen(article_hash: str, url: str = "") -> bool:
