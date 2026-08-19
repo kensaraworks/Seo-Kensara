@@ -50,5 +50,6 @@ To run this project locally on your machine:
    Access the dashboard locally at `http://localhost:8000`.
 
 ## ☁️ Deployment
-This repository is configured with a GitHub Actions workflow `.github/workflows/deploy.yml`. 
-When code is pushed to the `master` branch, GitHub will automatically build the container and deploy it directly to the connected Azure App Service instance (`kensarai-seo-app-8321`). All API keys and environment variables are managed securely inside the Azure Configuration dashboard.
+This repository is configured for Vercel deployment through `vercel.json` and the serverless entrypoint at `api/index.py`.
+
+Set the required environment variables in the Vercel project settings, then deploy the `main` branch. The app expects the same core runtime values used locally, including `DATA_DIR` for persistent storage and the API keys required by the content pipeline.
