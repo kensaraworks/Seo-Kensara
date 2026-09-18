@@ -41,7 +41,10 @@ def test_banner_upload_and_update_url(monkeypatch, tmp_path):
     mock_image = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR..."
     files = {"file": ("banner.png", mock_image, "image/png")}
     
-    # Path for static uploads mock
+    # Uploads land in the writable drafts tree (settings.content_output_dir),
+    # not in the read-only static bundle.
+    import src.config as config
+    monkeypatch.setattr(config.settings, "content_output_dir", str(tmp_path))
     monkeypatch.setattr(Path, "mkdir", lambda *args, **kwargs: None)
     
     # Mock file writing to save to filesystem
@@ -66,5 +69,7 @@ def test_banner_upload_and_update_url(monkeypatch, tmp_path):
     assert resp.status_code == 200
     assert "image_url" in resp.json()
     assert resp.json()["ok"] is True
-    assert resp.json()["image_url"].startswith("/static/uploads/")
+    # Served by the /uploads mount, which points at the same directory the
+    # file was written to — these used to disagree.
+    assert resp.json()["image_url"].startswith("/uploads/")
     assert len(written_data) > 0

@@ -110,13 +110,37 @@ curl https://<your-app>/healthz
 `file:bundled` means Supabase is unreachable or empty and the page is being
 served from the repository seed.
 
+If `status` is `degraded`, `router_errors` names the router that failed to
+import and why — that is the diagnostic to read first when a page misbehaves.
+If the whole app fails to import, `/healthz` returns `503` with
+`"mode": "recovery"`; set `DEBUG_STARTUP=1` to have it include the traceback
+(leave it unset in production — tracebacks name internal paths and settings).
+
 ---
+
+## Serverless gotchas this codebase handles
+
+Things that work locally and fail on Vercel. All four have caused a real
+outage here, and each has a regression test in
+`tests/test_serverless_runtime.py`:
+
+| Trap | What happens | How it's handled |
+| --- | --- | --- |
+| **No tz database** | `ZoneInfo("Asia/Kolkata")` raises `ZoneInfoNotFoundError` at import, so *every* route 500s | `tzdata` is pinned in `requirements.txt`, and `src/runtime.py` falls back to a fixed UTC+05:30 |
+| **CWD is `/var/task`** | `Path("drafts")` silently points at a read-only directory | Paths resolve from `__file__` or `settings.content_output_dir` |
+| **Read-only bundle** | Writing uploads into `static/` raises `OSError` | Uploads go to the writable drafts tree, served by the `/uploads` mount |
+| **Two entry points** | Zero-config picked the root `app.py` over `api/index.py` | Both import `app` from `src/asgi.py`, so they cannot diverge |
+
+Anything written to disk on serverless lives in `/tmp`, is per-instance, and
+disappears. That is why Supabase is the real store.
 
 ## How it fits together
 
 ```
-api/index.py            Vercel entry point; falls back to a recovery app that
+src/asgi.py             Shared ASGI factory; falls back to a recovery app that
                         still serves the dataset if the real app won't import
+api/index.py            Vercel entry point  -> src/asgi.py
+app.py                  Root entry point    -> src/asgi.py
 src/ui/app.py           App assembly. Registers routers defensively — one bad
                         router degrades one page instead of the whole site
 src/ui/routers/tracker.py   Public tracker routes (registered first, on purpose)

@@ -26,3 +26,7 @@ python-dotenv==1.0.1
 
 # In-process scheduler (long-running deployments only; Vercel uses Vercel Cron)
 apscheduler==3.10.4
+
+# Timezone database. Serverless images ship without /usr/share/zoneinfo, which
+# makes ZoneInfo("Asia/Kolkata") raise at import and take the whole app down.
+tzdata==2024.1

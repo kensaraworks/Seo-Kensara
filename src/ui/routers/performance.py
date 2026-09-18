@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from src.runtime import now_ist_label
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -43,7 +44,7 @@ async def performance_page(request: Request) -> HTMLResponse:
         {
             "request": request,
             "active_page": "performance",
-            "now": datetime.now(tz=__import__('zoneinfo', fromlist=['ZoneInfo']).ZoneInfo('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M IST"),
+            "now": now_ist_label(),
             "gsc_configured": gsc_configured,
             "gsc_widget_1": gsc_widget_1,
             "gsc_widget_2": gsc_widget_2,

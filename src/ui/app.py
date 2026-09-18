@@ -21,7 +21,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import FastAPI, Form, Request
@@ -30,11 +29,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.runtime import APP_VERSION, is_serverless, platform_name
+from src.runtime import IST, APP_VERSION, is_serverless, now_ist, now_ist_label, platform_name
 
 log = structlog.get_logger()
 
-IST = ZoneInfo("Asia/Kolkata")
 _ROOT_DIR = Path(__file__).resolve().parents[2]
 _STATIC_DIR = _ROOT_DIR / "static"
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -54,7 +52,7 @@ _VALID_TOKEN = hashlib.sha256(_AUTH_KEY.encode()).hexdigest()
 
 #: Reachable without the dashboard login. The tracker paths are added from the
 #: tracker router so the two lists cannot drift apart.
-_PUBLIC_PREFIXES = ("/static", "/api/cron/", "/enforcement-tracker")
+_PUBLIC_PREFIXES = ("/static", "/uploads", "/api/cron/", "/enforcement-tracker")
 _PUBLIC_PATHS = {
     "/auth/login",
     "/healthz",
@@ -103,7 +101,7 @@ def _ensure_drafts_structure() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.scheduler = None
-    app.state.started_at = datetime.now(tz=IST).isoformat()
+    app.state.started_at = now_ist().isoformat()
 
     _ensure_drafts_structure()
 
@@ -147,6 +145,26 @@ if _STATIC_DIR.is_dir():
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 else:  # pragma: no cover - only if the deploy bundle excludes static/
     log.warning("static_dir_missing", path=str(_STATIC_DIR))
+
+
+def _mount_uploads(application: FastAPI) -> None:
+    """Serve uploaded banners from the writable drafts tree.
+
+    They cannot be written into the static bundle: it is read-only on
+    serverless and replaced on every deploy.
+    """
+    from src.config import settings
+
+    uploads_dir = Path(settings.content_output_dir) / "uploads"
+    try:
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        log.info("uploads_dir_unavailable", path=str(uploads_dir), error=str(exc))
+        return
+    application.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
+
+
+_mount_uploads(app)
 
 
 #: Ordered by importance — the public tracker is registered first on purpose.
@@ -483,7 +501,7 @@ async def dashboard(request: Request):
     context: dict[str, Any] = {
         "request": request,
         "active_page": "dashboard",
-        "now": datetime.now(tz=IST).strftime("%Y-%m-%d %H:%M IST"),
+        "now": now_ist_label(),
         "pending_blogs": sum(1 for i in pending if i["type"] == "blog"),
         "pending_linkedin": sum(1 for i in pending if i["type"] == "linkedin"),
         "pending_newsletters": sum(1 for i in pending if i["type"] == "newsletter"),

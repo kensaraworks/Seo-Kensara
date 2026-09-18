@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from src.runtime import now_ist_label
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -43,7 +44,7 @@ async def geo_monitor_page(request: Request) -> HTMLResponse:
         {
             "request": request,
             "active_page": "geo_monitor",
-            "now": datetime.now(tz=__import__("zoneinfo", fromlist=["ZoneInfo"]).ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M IST"),
+            "now": now_ist_label(),
             "geo_summary": summary,
             "geo_rows": details["rows"],
             "geo_top_queries": details["top_queries"],

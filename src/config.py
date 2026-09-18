@@ -126,7 +126,9 @@ try:
 
     # Seed/copy default enforcement tracker if not present
     if not Path(settings_enforcement_tracker_path).exists():
-        default_tr = Path("data/enforcement_tracker.json")
+        # Resolved from this file: on Vercel the CWD is /var/task, not the
+        # project root, so a relative path silently finds nothing.
+        default_tr = Path(__file__).resolve().parent.parent / "data" / "enforcement_tracker.json"
         if default_tr.exists():
             shutil.copy(default_tr, settings_enforcement_tracker_path)
         else:

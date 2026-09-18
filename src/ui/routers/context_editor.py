@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 import structlog
+
+from src.config import settings
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -17,7 +19,9 @@ router = APIRouter(prefix="/context", tags=["context"])
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
-DRAFTS_ROOT = Path("drafts")
+# settings.content_output_dir, not ./drafts: serverless runs from a
+# read-only /var/task and the writable tree lives under /tmp.
+DRAFTS_ROOT = Path(settings.content_output_dir)
 STATS_PATH = DRAFTS_ROOT / ".cache" / "platform_stats.json"
 
 DEFAULT_STATS: dict = {

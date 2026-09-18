@@ -25,3 +25,43 @@ def platform_name() -> str:
     if os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
         return "aws-lambda"
     return "server"
+
+
+# ── Timezone ──────────────────────────────────────────────────────────────────
+# The whole product reports times in IST. `zoneinfo` reads the tz database from
+# the operating system, and serverless images routinely ship without one — which
+# makes `ZoneInfo("Asia/Kolkata")` raise ZoneInfoNotFoundError at import and take
+# the entire application down. `tzdata` in requirements.txt supplies the database,
+# and the fixed-offset fallback below means a missing database degrades the
+# timezone rather than the site. IST is UTC+05:30 year-round with no DST, so the
+# fallback is exact rather than approximate.
+
+from datetime import timedelta, timezone as _timezone
+
+IST_OFFSET = timedelta(hours=5, minutes=30)
+IST_NAME = "Asia/Kolkata"
+
+
+def _resolve_ist():
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(IST_NAME)
+    except Exception:
+        return _timezone(IST_OFFSET, "IST")
+
+
+#: Always a usable tzinfo. Import this instead of calling ZoneInfo directly.
+IST = _resolve_ist()
+
+
+def now_ist():
+    """Current time in IST."""
+    from datetime import datetime
+
+    return datetime.now(tz=IST)
+
+
+def now_ist_label() -> str:
+    """`2026-09-19 04:31 IST` — the timestamp shown in the dashboard header."""
+    return now_ist().strftime("%Y-%m-%d %H:%M IST")

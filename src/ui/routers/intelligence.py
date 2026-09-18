@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from src.runtime import now_ist_label
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -53,7 +54,7 @@ async def intelligence_page(request: Request) -> HTMLResponse:
         {
             "request": request,
             "active_page": "intelligence",
-            "now": datetime.now(tz=__import__('zoneinfo', fromlist=['ZoneInfo']).ZoneInfo('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M IST"),
+            "now": now_ist_label(),
             "news_scan_last_run": news_scan.get("last_run", "Never"),
             "news_scan_item_count": news_scan.get("item_count", 0),
             "news_scan_status": news_scan.get("status", "unknown"),

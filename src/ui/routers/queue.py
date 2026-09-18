@@ -333,9 +333,16 @@ async def upload_banner(folder: str, filename: str, file: UploadFile = File(...)
         if folder != "blogs":
             return JSONResponse({"ok": False, "error": "Only blogs support banner upload"}, status_code=400)
 
-        # Create static/uploads directory if not exists
-        static_uploads = Path("static") / "uploads"
-        static_uploads.mkdir(parents=True, exist_ok=True)
+        # Uploads go to the writable drafts tree, never into the deployment
+        # bundle (read-only on serverless, and wiped on every deploy anyway).
+        static_uploads = Path(settings.content_output_dir) / "uploads"
+        try:
+            static_uploads.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return JSONResponse(
+                {"ok": False, "error": f"Upload directory is not writable: {exc}"},
+                status_code=507,
+            )
 
         # Keep original extension or fallback to .jpg
         orig_suffix = Path(file.filename or "").suffix or ".jpg"
@@ -348,7 +355,11 @@ async def upload_banner(folder: str, filename: str, file: UploadFile = File(...)
             content = await file.read()
             buffer.write(content)
 
-        relative_url = f"/static/uploads/{unique_name}"
+        # Served by the /uploads mount in src/ui/app.py, which points at this
+        # same directory. On serverless the drafts tree is per-instance and
+        # ephemeral, so a banner uploaded here will not outlive the instance —
+        # use update-banner-url with a hosted URL for anything that must last.
+        relative_url = f"/uploads/{unique_name}"
 
         # Update the frontmatter of the Markdown file
         text = path.read_text(encoding="utf-8")

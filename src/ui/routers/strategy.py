@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from src.runtime import now_ist_label
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -194,7 +195,7 @@ async def strategy_page(request: Request, tab: str = "overview") -> HTMLResponse
             "request": request,
             "active_page": "strategy",
             "active_tab": tab,
-            "now": datetime.now(tz=__import__('zoneinfo', fromlist=['ZoneInfo']).ZoneInfo('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M IST"),
+            "now": now_ist_label(),
             "monday_brief": monday_brief,
             "content_gaps": content_gaps,
             "rankings": rankings,

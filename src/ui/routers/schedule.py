@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from src.config import settings
 from src.analytics.gsc_widgets import sync_gsc_query_data_to_db
 from src.analytics.search_console import gsc_client
 
@@ -22,7 +23,9 @@ router = APIRouter(prefix="/schedule", tags=["schedule"])
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
-DRAFTS_ROOT = Path("drafts")
+# settings.content_output_dir, not ./drafts: serverless runs from a
+# read-only /var/task and the writable tree lives under /tmp.
+DRAFTS_ROOT = Path(settings.content_output_dir)
 
 # ── Job definitions ───────────────────────────────────────────────────────────
 
