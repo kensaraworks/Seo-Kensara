@@ -223,6 +223,15 @@ async def healthz() -> JSONResponse:
     }
 
     try:
+        from src.config import SETTINGS_ERRORS
+
+        if SETTINGS_ERRORS:
+            payload["status"] = "degraded"
+            payload["settings_errors"] = SETTINGS_ERRORS
+    except Exception as exc:
+        payload["settings_errors"] = [f"could not read settings: {exc}"]
+
+    try:
         from src.db.supabase_client import is_supabase_configured
 
         payload["supabase_configured"] = is_supabase_configured()

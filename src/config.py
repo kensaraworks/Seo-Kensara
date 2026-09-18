@@ -82,7 +82,48 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-settings = Settings()
+#: Populated when an environment variable had to be discarded. Surfaced by
+#: /healthz so a bad value is visible rather than silently defaulted.
+SETTINGS_ERRORS: list[str] = []
+
+
+def _load_settings() -> "Settings":
+    """Build Settings, surviving a malformed environment variable.
+
+    A single bad value — `NEWS_MAX_AGE_DAYS=` or a typo'd boolean — otherwise
+    raises ValidationError at import and takes the whole application down with
+    it. On a serverless host that surfaces as an opaque invocation failure with
+    no indication that an env var is to blame. The offending variables are
+    dropped, their defaults are used, and the problem is reported loudly at
+    /healthz instead of fatally at import.
+    """
+    import os as _os
+
+    from pydantic import ValidationError
+
+    try:
+        return Settings()
+    except ValidationError as exc:
+        discarded = []
+        for error in exc.errors():
+            for location in error.get("loc", ()):  # field name
+                name = str(location)
+                discarded.append(f"{name}: {error.get('msg', 'invalid')}")
+                _os.environ.pop(name.upper(), None)
+                _os.environ.pop(name, None)
+        SETTINGS_ERRORS.extend(discarded)
+        log.error("settings_invalid_env_discarded", fields=discarded)
+        try:
+            return Settings()
+        except ValidationError:
+            # Still unusable: fall back to the declared defaults wholesale
+            # rather than refusing to start.
+            SETTINGS_ERRORS.append("settings fell back to defaults entirely")
+            log.error("settings_fallback_to_defaults")
+            return Settings.model_construct()
+
+
+settings = _load_settings()
 
 # ── Dynamic Persistence Resolution ───────────────────────────────────────────
 from pathlib import Path

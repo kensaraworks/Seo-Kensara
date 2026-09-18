@@ -251,3 +251,104 @@ def test_vercel_config_bundles_the_application_files():
     ]["includeFiles"]
     for required in ("src/**", "data/**", "static/**"):
         assert required in include, f"{required} missing from includeFiles"
+
+
+# ── The recovery path must itself be unbreakable ──────────────────────────────
+
+def test_recovery_app_builds_and_serves(tmp_path):
+    """The recovery app used to crash while being constructed.
+
+    src/asgi.py has `from __future__ import annotations`, so a `-> JSONResponse`
+    return annotation on a FastAPI handler is a string resolved at module scope,
+    where the function-local import does not exist:
+        PydanticUndefinedAnnotation: name 'JSONResponse' is not defined
+    A crashing recovery path turns a diagnosable error into an opaque
+    FUNCTION_INVOCATION_FAILED, so it now uses only the standard library.
+    """
+    script = (
+        "import sys;"
+        "sys.path.insert(0, %r);"
+        "cls = type('B', (), {"
+        "  'find_module': lambda self, n, p=None: self if n == 'src.ui.app' else None,"
+        "  'load_module': lambda self, n: (_ for _ in ()).throw(ImportError('boom'))});"
+        "sys.meta_path.insert(0, cls());"
+        "import src.asgi as a;"
+        "from starlette.testclient import TestClient;"
+        "c = TestClient(a.app);"
+        "h = c.get('/healthz');"
+        "d = c.get('/enforcement-tracker/data.json');"
+        "print(h.status_code, h.json()['status'], d.status_code,"
+        "      sum(len(d.json().get(k, [])) for k in a.SECTIONS))" % str(ROOT)
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=ROOT, capture_output=True, text=True, timeout=120
+    )
+    assert result.returncode == 0, result.stderr[-3000:]
+    status, state, dataset_status, rows = result.stdout.strip().splitlines()[-1].split()
+    assert (status, state, dataset_status) == ("503", "startup_failed", "200")
+    assert int(rows) > 0, "the dataset must stay available in recovery mode"
+
+
+def test_recovery_path_imports_nothing_beyond_the_stdlib():
+    """Guards the property that makes the recovery path trustworthy."""
+    tree = ast.parse((ROOT / "src" / "asgi.py").read_text(encoding="utf-8"))
+    third_party = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            third_party.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            third_party.add(node.module.split(".")[0])
+    allowed = {"json", "os", "sys", "traceback", "pathlib", "__future__", "src", "typing"}
+    assert third_party <= allowed, f"src/asgi.py must stay stdlib-only, found: {third_party - allowed}"
+
+
+def test_no_route_returns_an_annotation_that_is_not_module_level():
+    """The bug class above, across every module using postponed annotations."""
+    offenders = []
+    for path in list((ROOT / "src").rglob("*.py")) + [ROOT / "api/index.py", ROOT / "app.py"]:
+        source = path.read_text(encoding="utf-8")
+        if "from __future__ import annotations" not in source:
+            continue
+        tree = ast.parse(source)
+        module_names = set()
+        for node in tree.body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                module_names.update(a.asname or a.name.split(".")[0] for a in node.names)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.decorator_list:
+                continue
+            decorator = ast.unparse(node.decorator_list[0])
+            if not any(verb in decorator for verb in (".get(", ".post(", ".put(", ".delete(")):
+                continue
+            if node.returns is None:
+                continue
+            annotation = ast.unparse(node.returns).split("[")[0].strip()
+            if annotation in {"None", "str", "dict", "int", "bool", "list"} or annotation in module_names:
+                continue
+            offenders.append(f"{path.relative_to(ROOT)}:{node.lineno} -> {annotation}")
+    assert offenders == [], f"return annotations unresolvable at module scope: {offenders}"
+
+
+# ── Configuration must not be able to kill the app ────────────────────────────
+
+def test_a_malformed_env_var_degrades_instead_of_killing_the_app():
+    """A ValidationError at import surfaces on serverless as an opaque
+    invocation failure with no hint that an env var is to blame."""
+    script = (
+        "from src.config import settings, SETTINGS_ERRORS;"
+        "from src.ui.app import app;"
+        "print(settings.news_max_age_days, len(SETTINGS_ERRORS), len(app.routes) > 20)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        env={**__import__("os").environ, "NEWS_MAX_AGE_DAYS": "not-an-integer"},
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    value, error_count, routes_ok = result.stdout.strip().splitlines()[-1].split()
+    assert value == "90", "the declared default should be restored"
+    assert int(error_count) == 1, "the discarded variable must be reported"
+    assert routes_ok == "True"
