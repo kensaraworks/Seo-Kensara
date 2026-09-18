@@ -1,13 +1,33 @@
-"""Shared pytest fixtures for the KensaraAI SEO Agent test suite."""
+"""Shared pytest fixtures for the KensaraAI SEO Agent test suite.
+
+Pipeline imports (feedparser, bs4, the LLM SDKs) are deliberately deferred into
+the fixture bodies. The web-layer and store tests run against the slim runtime
+requirements alone, so a missing pipeline dependency skips those fixtures'
+tests instead of collapsing collection for the whole suite.
+"""
 import pytest
 
-from src.scrapers.rss_scraper import NewsItem
-from src.agents.news_scout import ScoredNewsItem
+
+@pytest.fixture(autouse=True)
+def isolate_enforcement_cache(tmp_path, monkeypatch):
+    """Redirect the tracker's writable cache into a per-test temp directory.
+
+    Without this, a test that saves a snapshot overwrites the on-disk cache the
+    whole suite (and the developer's next run) reads from.
+    """
+    from src.store import enforcement_store as store
+
+    monkeypatch.setattr(store, "_cache_path", lambda: tmp_path / "enforcement_tracker.json")
+    store.invalidate_cache()
+    yield
+    store.invalidate_cache()
 
 
 @pytest.fixture
-def sample_news_item() -> NewsItem:
+def sample_news_item():
     """A high-relevance DPDPA enforcement news item."""
+    from src.scrapers.rss_scraper import NewsItem
+
     return NewsItem(
         title="DPDPA Data Protection Board issues first enforcement notice to fintech company",
         url="https://example.com/dpdpa-enforcement",
@@ -25,8 +45,10 @@ def sample_news_item() -> NewsItem:
 
 
 @pytest.fixture
-def sample_scored_item(sample_news_item: NewsItem) -> ScoredNewsItem:
+def sample_scored_item(sample_news_item):
     """A pre-scored news item with high relevance."""
+    from src.agents.news_scout import ScoredNewsItem
+
     return ScoredNewsItem(
         item=sample_news_item,
         relevance_score=9,

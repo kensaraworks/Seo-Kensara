@@ -2,7 +2,7 @@ services:
   - type: web
     name: kensarai-seo-agent
     runtime: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements-pipeline.txt
     startCommand: bash start.sh
     envVars:
       - key: GROQ_API_KEY
@@ -27,6 +27,11 @@ services:
         value: Asia/Kolkata
       - key: DATA_DIR
         value: /app/persistent
+      # Supabase is the durable store; the disk below is only a local cache.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
     disk:
       name: drafts
       mountPath: /app/persistent

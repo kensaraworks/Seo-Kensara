@@ -1,318 +1,296 @@
-"""KensaraAI Content Hub — FastAPI application."""
+"""KensaraAI Content Hub — FastAPI application.
+
+Import discipline
+    Nothing at module scope may pull in the scraping, LLM or Google API stack.
+    Those live behind lazy imports inside route handlers and the scheduler, so a
+    Vercel cold start only pays for FastAPI, Jinja2 and httpx — and a missing
+    optional dependency degrades one page instead of taking the site down.
+
+Routers are registered defensively: if one fails to import, it is recorded and
+skipped, and ``/healthz`` reports it. The public enforcement tracker is
+registered first so the site's main backlink page survives any other breakage.
+"""
 from __future__ import annotations
 
 import hashlib
 import hmac
+import importlib
 import json
-import os
 import re
-import sqlite3
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
-from contextlib import asynccontextmanager
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-from src.main import (
-    run_news_scan,
-    run_blog_generate,
-    run_regulatory_poll,
-    run_content_gap_check,
-    run_trending_monitors,
-    run_feedback_loop_monthly,
-)
-from src.agents.content_gap_analyzer import run_competitor_intelligence
-from src.agents.content_refresher import process_pending_refreshes
-from src.agents.enforcement_tracker import update_enforcement_tracker
-from src.analytics.gsc_widgets import (
-    get_high_impression_low_ctr_queries,
-    get_pages_near_page_one,
-    get_zero_impression_posts,
-    sync_gsc_query_data_to_db,
-)
-from src.analytics.search_console import gsc_client, init_gsc_tables
-from src.ui.routers import queue, schedule, context_editor, api
-from src.ui.routers import intelligence as intelligence_router
-from src.ui.routers import strategy as strategy_router
-from src.ui.routers import performance as performance_router
-from src.ui.routers import geo_monitor as geo_monitor_router
-from src.ui.dashboard_data import (
-    get_gsc_stat_cards,
-    get_pipeline_health,
-    get_content_queue_depth,
-    get_api_costs,
-    get_geo_monitor_summary,
-)
+from src.runtime import APP_VERSION, is_serverless, platform_name
 
 log = structlog.get_logger()
 
+IST = ZoneInfo("Asia/Kolkata")
+_ROOT_DIR = Path(__file__).resolve().parents[2]
+_STATIC_DIR = _ROOT_DIR / "static"
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+#: Populated by _include_routers(); surfaced by /healthz.
+ROUTER_ERRORS: dict[str, str] = {}
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
+
 _AUTH_KEY = "COO@Kensara"
 _AUTH_COOKIE = "kensara_auth_session_v2"
-# Cookie value is the SHA-256 of the auth key — no server-side storage needed.
+# The cookie value is the SHA-256 of the auth key — no server-side session store.
 _VALID_TOKEN = hashlib.sha256(_AUTH_KEY.encode()).hexdigest()
+
+#: Reachable without the dashboard login. The tracker paths are added from the
+#: tracker router so the two lists cannot drift apart.
+_PUBLIC_PREFIXES = ("/static", "/api/cron/", "/enforcement-tracker")
+_PUBLIC_PATHS = {
+    "/auth/login",
+    "/healthz",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/favicon.ico",
+}
+
+try:
+    from src.ui.routers.tracker import PUBLIC_PATHS as _TRACKER_PUBLIC_PATHS
+
+    _PUBLIC_PATHS |= set(_TRACKER_PUBLIC_PATHS)
+except Exception as exc:  # pragma: no cover - import guard
+    log.warning("tracker_public_paths_unavailable", error=str(exc))
+
+
+def is_public_path(path: str) -> bool:
+    return path in _PUBLIC_PATHS or path.startswith(_PUBLIC_PREFIXES)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
+    """Cookie gate for the dashboard. Public SEO routes pass straight through."""
+
     async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        # Allow the login page, static assets, and the public enforcement tracker through unauthenticated
-        if path == "/auth/login" or path == "/enforcement-tracker.html" or path.startswith("/static"):
+        if is_public_path(request.url.path):
             return await call_next(request)
-        token = request.cookies.get(_AUTH_COOKIE)
-        if token != _VALID_TOKEN:
+        if request.cookies.get(_AUTH_COOKIE) != _VALID_TOKEN:
             return RedirectResponse(url="/auth/login", status_code=302)
         return await call_next(request)
 
 
+# ── Lifespan ──────────────────────────────────────────────────────────────────
 
 def _ensure_drafts_structure() -> None:
-    """Create required drafts directory structure on startup."""
+    """Create the drafts tree. A read-only filesystem is not an error."""
+    from src.config import settings
+
     try:
         root = Path(settings.content_output_dir)
-        required_paths = [
-            root / "blogs",
-            root / "linkedin",
-            root / "newsletters",
-            root / "reports",
-            root / "flagged",
-            root / ".cache",
-        ]
-        for path in required_paths:
-            path.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        log.warning("ensure_drafts_structure_failed", error=str(exc))
+        for name in ("blogs", "linkedin", "newsletters", "reports", "flagged", ".cache"):
+            (root / name).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        log.info("drafts_structure_skipped", error=str(exc))
 
-
-def _sync_page_summaries_to_content_performance(page_summaries: list) -> int:
-    """Write page-level GSC summaries to content_performance with schema-safe upsert."""
-    from src.config import settings_database_path
-    db_path = Path(settings_database_path)
-    try:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-
-    try:
-        conn = sqlite3.connect(str(db_path))
-        try:
-            cols = {row[1] for row in conn.execute("PRAGMA table_info(content_performance)").fetchall()}
-
-            for col_sql in (
-                "ALTER TABLE content_performance ADD COLUMN post_url TEXT",
-                "ALTER TABLE content_performance ADD COLUMN avg_position_30d REAL DEFAULT 0.0",
-                "ALTER TABLE content_performance ADD COLUMN avg_ctr_30d REAL DEFAULT 0.0",
-                "ALTER TABLE content_performance ADD COLUMN top_query TEXT DEFAULT ''",
-                "ALTER TABLE content_performance ADD COLUMN last_checked TEXT",
-            ):
-                col_name = col_sql.split("ADD COLUMN ", 1)[1].split(" ", 1)[0]
-                if col_name not in cols:
-                    try:
-                        conn.execute(col_sql)
-                        cols.add(col_name)
-                    except sqlite3.OperationalError:
-                        pass
-
-            conn.execute(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_cp_post_url_unique ON content_performance(post_url)"
-            )
-
-            updated = 0
-            for summary in page_summaries:
-                page_url = getattr(summary, "page_url", "")
-                if not page_url:
-                    continue
-
-                conn.execute(
-                    """
-                    INSERT INTO content_performance
-                        (keyword, post_url, impressions_30d, clicks_30d, avg_position_30d,
-                         avg_ctr_30d, top_query, last_checked, recorded_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, date('now'), datetime('now'))
-                    ON CONFLICT(post_url) DO UPDATE SET
-                        impressions_30d  = excluded.impressions_30d,
-                        clicks_30d       = excluded.clicks_30d,
-                        avg_position_30d = excluded.avg_position_30d,
-                        avg_ctr_30d      = excluded.avg_ctr_30d,
-                        top_query        = excluded.top_query,
-                        last_checked     = date('now')
-                    """,
-                    (
-                        page_url,
-                        page_url,
-                        getattr(summary, "impressions_30d", 0),
-                        getattr(summary, "clicks_30d", 0),
-                        getattr(summary, "avg_position_30d", 0.0),
-                        getattr(summary, "avg_ctr_30d", 0.0),
-                        getattr(summary, "top_query", ""),
-                    ),
-                )
-                updated += 1
-
-            conn.commit()
-            return updated
-        finally:
-            conn.close()
-    except Exception as exc:
-        log.warning("sync_page_summaries_failed", error=str(exc))
-        return 0
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        _ensure_drafts_structure()
-    except Exception as exc:
-        log.warning("lifespan_drafts_structure_failed", error=str(exc))
+    app.state.scheduler = None
+    app.state.started_at = datetime.now(tz=IST).isoformat()
+
+    _ensure_drafts_structure()
+
+    if is_serverless():
+        # No durable disk and no long-lived process: scheduled work runs through
+        # Vercel Cron against /api/cron/* instead of an in-process scheduler.
+        log.info("serverless_startup", platform=platform_name(), version=APP_VERSION)
+        yield
+        return
 
     try:
+        from src.analytics.search_console import init_gsc_tables
+
         init_gsc_tables()
     except Exception as exc:
-        log.warning("lifespan_init_gsc_failed", error=str(exc))
+        log.warning("init_gsc_tables_failed", error=str(exc))
 
-    if os.getenv("VERCEL") != "1" and not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
-        try:
-            async def run_gsc_sync() -> None:
-                if not gsc_client.is_configured():
-                    log.warning("gsc_sync_skipped_not_configured")
-                    return
-                try:
-                    log.info("gsc_sync_started")
-                    page_summaries = gsc_client.get_blog_performance_30d()
-                    updated_pages = _sync_page_summaries_to_content_performance(page_summaries)
+    try:
+        from src.ui.scheduler import build_scheduler
 
-                    query_rows = gsc_client.get_query_performance_30d(max_queries=500)
-                    synced_queries = sync_gsc_query_data_to_db(query_rows)
-
-                    log.info(
-                        "gsc_sync_completed",
-                        pages=len(page_summaries),
-                        pages_updated=updated_pages,
-                        query_rows=synced_queries,
-                    )
-                except Exception as exc:
-                    log.error("gsc_sync_failed", error=str(exc), exc_info=True)
-
-            scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-            app.state.scheduler = scheduler
-
-            # Automatic background execution logger
-            from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
-            from src.ui.routers.schedule import record_job_execution
-
-            def _on_job_executed(event):
-                job_id = event.job_id
-                item_count = 0
-                duration_ms = 0
-                latest_news = None
-                if isinstance(event.retval, dict):
-                    item_count = event.retval.get("count", 0)
-                    duration_ms = event.retval.get("duration_ms", 0)
-                    latest_news = event.retval.get("latest_news")
-                record_job_execution(
-                    job_id=job_id,
-                    status="ok",
-                    item_count=item_count,
-                    duration_ms=duration_ms,
-                    triggered_by="auto",
-                    latest_news=latest_news,
-                )
-
-            def _on_job_error(event):
-                job_id = event.job_id
-                record_job_execution(
-                    job_id=job_id,
-                    status="error",
-                    error=str(event.exception) if event.exception else "Execution error",
-                    triggered_by="auto",
-                )
-
-            scheduler.add_listener(_on_job_executed, EVENT_JOB_EXECUTED)
-            scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
-
-            scheduler.add_job(run_news_scan, CronTrigger(hour=8, minute=0), id="news_scan", name="Daily news scan")
-            scheduler.add_job(run_regulatory_poll, CronTrigger(hour="*/10", minute=0), id="regulatory_poll", name="Regulatory feed poll")
-            scheduler.add_job(
-                run_content_gap_check,
-                CronTrigger(hour=7, minute=45, timezone="Asia/Kolkata"),
-                id="content_gap_check",
-                replace_existing=True,
-                name="Daily content gap check",
-            )
-            scheduler.add_job(
-                run_competitor_intelligence,
-                CronTrigger(day_of_week="mon", hour=6, minute=0, timezone="Asia/Kolkata"),
-                id="competitor_intelligence",
-                replace_existing=True,
-                name="Weekly competitor intelligence",
-            )
-            scheduler.add_job(
-                run_trending_monitors,
-                CronTrigger(hour=6, minute=30, timezone="Asia/Kolkata"),
-                id="trending_monitor",
-                replace_existing=True,
-                name="Daily trending monitor",
-            )
-            scheduler.add_job(
-                run_gsc_sync,
-                CronTrigger(day_of_week="sun", hour=7, minute=0, timezone="Asia/Kolkata"),
-                id="gsc_sync",
-                replace_existing=True,
-                name="Weekly GSC sync",
-            )
-            scheduler.add_job(
-                process_pending_refreshes,
-                CronTrigger(day_of_week="sun", hour=8, minute=0, timezone="Asia/Kolkata"),
-                id="content_refresh",
-                replace_existing=True,
-                name="Weekly content refresh queue drain",
-            )
-            scheduler.add_job(
-                run_feedback_loop_monthly,
-                CronTrigger(day=1, hour=4, minute=0, timezone="Asia/Kolkata"),
-                id="feedback_loop_monthly",
-                replace_existing=True,
-                name="Monthly content performance feedback loop",
-            )
-            scheduler.add_job(
-                update_enforcement_tracker,
-                CronTrigger(day_of_week="thu", hour=6, minute=0, timezone="Asia/Kolkata"),
-                id="enforcement_tracker_update",
-                replace_existing=True,
-                name="Weekly DPDPA enforcement tracker update",
-            )
-            scheduler.start()
-            log.info("seo_agent_started_via_fastapi", jobs=scheduler.get_jobs())
-            yield
-            scheduler.shutdown()
-            log.info("seo_agent_stopped")
-            return
-        except Exception as exc:
-            log.error("scheduler_startup_failed", error=str(exc))
+        app.state.scheduler = build_scheduler()
+    except Exception as exc:
+        log.error("scheduler_startup_failed", error=str(exc))
 
     yield
 
+    if app.state.scheduler is not None:
+        try:
+            app.state.scheduler.shutdown()
+            log.info("scheduler_stopped")
+        except Exception as exc:
+            log.warning("scheduler_shutdown_failed", error=str(exc))
 
-app = FastAPI(title="KensaraAI Content Hub", version="1.0.0", lifespan=lifespan)
+
+# ── Application ───────────────────────────────────────────────────────────────
+
+app = FastAPI(title="KensaraAI Content Hub", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(AuthMiddleware)
 
-_STATIC_DIR = Path(__file__).resolve().parents[2] / "static"
-app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+if _STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+else:  # pragma: no cover - only if the deploy bundle excludes static/
+    log.warning("static_dir_missing", path=str(_STATIC_DIR))
 
-_TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+#: Ordered by importance — the public tracker is registered first on purpose.
+_ROUTER_MODULES = (
+    "src.ui.routers.tracker",
+    "src.ui.routers.api",
+    "src.ui.routers.queue",
+    "src.ui.routers.schedule",
+    "src.ui.routers.context_editor",
+    "src.ui.routers.intelligence",
+    "src.ui.routers.strategy",
+    "src.ui.routers.performance",
+    "src.ui.routers.geo_monitor",
+)
+
+
+def _include_routers(application: FastAPI) -> None:
+    for module_name in _ROUTER_MODULES:
+        try:
+            module = importlib.import_module(module_name)
+            application.include_router(module.router)
+        except Exception as exc:
+            ROUTER_ERRORS[module_name] = f"{type(exc).__name__}: {exc}"
+            log.error("router_registration_failed", module=module_name, error=str(exc))
+    if ROUTER_ERRORS:
+        log.warning("routers_degraded", failed=sorted(ROUTER_ERRORS))
+    else:
+        log.info("routers_registered", count=len(_ROUTER_MODULES))
+
+
+_include_routers(app)
+
+
+# ── Health & SEO endpoints ────────────────────────────────────────────────────
+
+@app.get("/healthz")
+async def healthz() -> JSONResponse:
+    """Liveness plus a readable summary of what is and is not wired up."""
+    payload: dict[str, Any] = {
+        "status": "ok" if not ROUTER_ERRORS else "degraded",
+        "version": APP_VERSION,
+        "platform": platform_name(),
+        "serverless": is_serverless(),
+        "router_errors": ROUTER_ERRORS,
+    }
+
+    try:
+        from src.db.supabase_client import is_supabase_configured
+
+        payload["supabase_configured"] = is_supabase_configured()
+    except Exception as exc:
+        payload["supabase_configured"] = False
+        payload["supabase_error"] = str(exc)
+
+    try:
+        from src.store import enforcement_store as store
+
+        snapshot = store.load_snapshot()
+        public = store.public_snapshot(snapshot)
+        payload["enforcement_tracker"] = {
+            "source": snapshot.get("source"),
+            "published_actions": public["statistics"]["total_all_sections"],
+            "pending_review": public["statistics"].get("pending_review", 0),
+            "last_updated": snapshot.get("metadata", {}).get("last_updated", ""),
+        }
+    except Exception as exc:
+        payload["status"] = "degraded"
+        payload["enforcement_tracker"] = {"error": str(exc)}
+
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots() -> PlainTextResponse:
+    """Let crawlers have the tracker and the dataset; keep the dashboard out."""
+    from src.ui.tracker_view import canonical_urls
+
+    page_url, _ = canonical_urls()
+    base = page_url.rsplit("/", 1)[0]
+    body = "\n".join(
+        [
+            "User-agent: *",
+            "Allow: /enforcement-tracker.html",
+            "Allow: /dpdpa-enforcement-tracker",
+            "Allow: /enforcement-tracker/data.json",
+            "Disallow: /auth/",
+            "Disallow: /queue/",
+            "Disallow: /schedule/",
+            "Disallow: /context/",
+            "Disallow: /api/",
+            "Allow: /api/v1/enforcement/actions",
+            "",
+            f"Sitemap: {base}/sitemap.xml",
+            "",
+        ]
+    )
+    return PlainTextResponse(body, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/sitemap.xml")
+async def sitemap() -> Response:
+    """Single-entry sitemap for the public tracker page."""
+    from src.store import enforcement_store as store
+    from src.ui.tracker_view import canonical_urls
+
+    page_url, _ = canonical_urls()
+    try:
+        last_updated = store.load_snapshot().get("metadata", {}).get("last_updated", "")
+    except Exception:
+        last_updated = ""
+
+    lastmod = f"    <lastmod>{last_updated}</lastmod>\n" if last_updated else ""
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url>\n"
+        f"    <loc>{page_url}</loc>\n"
+        f"{lastmod}"
+        "    <changefreq>weekly</changefreq>\n"
+        "    <priority>0.9</priority>\n"
+        "  </url>\n"
+        "</urlset>\n"
+    )
+    return Response(
+        xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    from fastapi.responses import FileResponse
+
+    icon = _STATIC_DIR / "images" / "kensara-icon.ico"
+    if icon.exists():
+        return FileResponse(str(icon), headers={"Cache-Control": "public, max-age=86400"})
+    return Response(status_code=204)
 
 
 # ── Auth routes ───────────────────────────────────────────────────────────────
 
 @app.get("/auth/login", response_class=HTMLResponse)
-async def auth_page(request: Request) -> HTMLResponse:
+async def auth_page(request: Request):
     if request.cookies.get(_AUTH_COOKIE) == _VALID_TOKEN:
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse("auth.html", {"request": request})
@@ -323,12 +301,7 @@ async def auth_submit(auth_key: str = Form(...)) -> JSONResponse:
     if not hmac.compare_digest(auth_key, _AUTH_KEY):
         return JSONResponse({"ok": False}, status_code=401)
     response = JSONResponse({"ok": True, "redirect": "/"})
-    response.set_cookie(
-        key=_AUTH_COOKIE,
-        value=_VALID_TOKEN,
-        httponly=True,
-        samesite="lax",
-    )
+    response.set_cookie(key=_AUTH_COOKIE, value=_VALID_TOKEN, httponly=True, samesite="lax")
     return response
 
 
@@ -339,24 +312,15 @@ async def auth_logout() -> RedirectResponse:
     return response
 
 
-# ── Mount routers ─────────────────────────────────────────────────────────────
-app.include_router(queue.router)
-app.include_router(schedule.router)
-app.include_router(context_editor.router)
-app.include_router(api.router)
-app.include_router(intelligence_router.router)
-app.include_router(strategy_router.router)
-app.include_router(performance_router.router)
-app.include_router(geo_monitor_router.router)
-
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-from src.config import settings
-DRAFTS_ROOT = Path(settings.content_output_dir)
+# ── Dashboard helpers ─────────────────────────────────────────────────────────
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+
+
+def _drafts_root() -> Path:
+    from src.config import settings
+
+    return Path(settings.content_output_dir)
 
 
 def _parse_frontmatter(text: str) -> dict:
@@ -364,39 +328,37 @@ def _parse_frontmatter(text: str) -> dict:
     match = _FRONTMATTER_RE.match(text)
     if not match:
         return {}
-    fm: dict = {}
+    fields: dict = {}
     for line in match.group(1).splitlines():
         if ":" not in line:
             continue
-        key, _, val = line.partition(":")
-        key = key.strip()
-        val = val.strip().strip('"').strip("'")
-        # booleans
-        if val.lower() == "true":
-            val = True  # type: ignore[assignment]
-        elif val.lower() == "false":
-            val = False  # type: ignore[assignment]
+        key, _, raw = line.partition(":")
+        value: Any = raw.strip().strip('"').strip("'")
+        if value.lower() == "true":
+            value = True
+        elif value.lower() == "false":
+            value = False
         else:
-            # attempt integer
             try:
-                val = int(val)  # type: ignore[assignment]
+                value = int(value)
             except ValueError:
                 pass
-        fm[key] = val
-    return fm
+        fields[key.strip()] = value
+    return fields
 
 
 def _collect_drafts() -> list[dict]:
-    """Walk drafts/ and return list of content item dicts."""
+    """Walk drafts/ and return the content items backing the dashboard counters."""
     items: list[dict] = []
     type_map = {
-        "blogs": ("blog", "📄"),
-        "linkedin": ("linkedin", "📱"),
-        "newsletters": ("newsletter", "📧"),
-        "flagged": ("blog", "🚩"),
+        "blogs": ("blog", "\U0001F4C4"),
+        "linkedin": ("linkedin", "\U0001F4F1"),
+        "newsletters": ("newsletter", "\U0001F4E7"),
+        "flagged": ("blog", "\U0001F6A9"),
     }
+    root = _drafts_root()
     for folder, (content_type, icon) in type_map.items():
-        folder_path = DRAFTS_ROOT / folder
+        folder_path = root / folder
         if not folder_path.exists():
             continue
         for md_file in sorted(folder_path.glob("*.md"), reverse=True):
@@ -426,134 +388,138 @@ def _collect_drafts() -> list[dict]:
     return items
 
 
-def _load_job_history() -> dict:
+def _supabase_rows(table: str, **kwargs) -> list[dict]:
+    """Query Supabase, returning [] when it is not configured or errors."""
     try:
         from src.db.supabase_client import SupabaseDB, is_supabase_configured
-        if is_supabase_configured():
-            rows = SupabaseDB.select_sync("job_history", order="run_at.desc", limit=20)
-            if rows:
-                history = {}
-                for r in rows:
-                    j_id = r.get("job_id") or "unknown"
-                    history[j_id] = r
-                return history
-    except Exception:
-        pass
-    cache_path = DRAFTS_ROOT / ".cache" / "job_history.json"
+
+        if not is_supabase_configured():
+            return []
+        return SupabaseDB.select_sync(table, **kwargs) or []
+    except Exception as exc:
+        log.warning("supabase_query_failed", table=table, error=str(exc))
+        return []
+
+
+def _load_job_history() -> dict:
+    rows = _supabase_rows("job_history", order="run_at.desc", limit=20)
+    if rows:
+        return {row.get("job_id") or "unknown": row for row in rows}
     try:
-        return json.loads(cache_path.read_text(encoding="utf-8"))
+        return json.loads((_drafts_root() / ".cache" / "job_history.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
 
 
 def _load_activity_log() -> list[dict]:
-    """Return last 5 activity entries from Supabase activity_log table."""
+    """The five most recent activity entries."""
+    rows = _supabase_rows("activity_log", order="created_at.desc", limit=5)
+    if rows:
+        return [
+            {
+                "timestamp": (row.get("details") or {}).get("timestamp") or (row.get("created_at") or "")[:16],
+                "action": row.get("action", ""),
+                "title": row.get("item", ""),
+                "type": (row.get("details") or {}).get("type", "system"),
+            }
+            for row in rows
+        ]
     try:
-        from src.db.supabase_client import SupabaseDB, is_supabase_configured
-        if is_supabase_configured():
-            rows = SupabaseDB.select_sync("activity_log", order="created_at.desc", limit=5)
-            if rows:
-                formatted = []
-                for r in rows:
-                    details = r.get("details") or {}
-                    formatted.append({
-                        "timestamp": details.get("timestamp") or r.get("created_at", "")[:16],
-                        "action": r.get("action", ""),
-                        "title": r.get("item", ""),
-                        "type": details.get("type", "system"),
-                    })
-                return formatted
-    except Exception:
-        pass
-    log_path = DRAFTS_ROOT / ".cache" / "activity_log.json"
-    try:
-        data = json.loads(log_path.read_text(encoding="utf-8"))
+        data = json.loads((_drafts_root() / ".cache" / "activity_log.json").read_text(encoding="utf-8"))
         return data[-5:] if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError):
         return []
 
 
+def _gsc_context() -> dict:
+    """Search Console widgets, or empty values when GSC is unavailable."""
+    empty = {
+        "gsc_configured": False,
+        "gsc_widget_1": [],
+        "gsc_widget_2": [],
+        "gsc_widget_3": [],
+        "gsc_summary": {},
+        "gsc_stat_cards": [],
+    }
+    try:
+        from src.analytics.gsc_widgets import (
+            get_high_impression_low_ctr_queries,
+            get_pages_near_page_one,
+            get_zero_impression_posts,
+        )
+        from src.analytics.search_console import gsc_client
+        from src.ui.dashboard_data import get_gsc_stat_cards
 
-# ── Dashboard route ────────────────────────────────────────────────────────────
+        if not gsc_client.is_configured():
+            return empty
+
+        summary = gsc_client.get_weekly_site_summary()
+        return {
+            "gsc_configured": True,
+            "gsc_widget_1": get_high_impression_low_ctr_queries(),
+            "gsc_widget_2": get_pages_near_page_one(),
+            "gsc_widget_3": get_zero_impression_posts(),
+            "gsc_summary": summary,
+            "gsc_stat_cards": get_gsc_stat_cards(summary),
+        }
+    except Exception as exc:
+        log.warning("gsc_context_failed", error=str(exc))
+        return empty
+
+
+# ── Dashboard route ───────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request) -> HTMLResponse:
+async def dashboard(request: Request):
     from datetime import date, timedelta
 
     items = _collect_drafts()
     job_history = _load_job_history()
-    activity_log = _load_activity_log()
 
-    # ── Content counters ─────────────────────────────────────────────────────
     pending = [i for i in items if i["status"] in ("draft", "pending_review")]
-    pending_blogs = sum(1 for i in pending if i["type"] == "blog")
-    pending_linkedin = sum(1 for i in pending if i["type"] == "linkedin")
-    pending_newsletters = sum(1 for i in pending if i["type"] == "newsletter")
-    total_approved = sum(1 for i in items if i["approved"] is True)
-    total_rejected = sum(1 for i in items if i["status"] == "rejected")
-    total_published = sum(1 for i in items if i["status"] == "published")
-    total_flagged = sum(1 for i in items if i["status"] == "flagged")
     week_ago = str(date.today() - timedelta(days=7))
     this_week = [i for i in items if str(i.get("date", "")) >= week_ago]
 
-    # ── GSC ──────────────────────────────────────────────────────────────────
-    gsc_configured = gsc_client.is_configured()
-    gsc_widget_1 = get_high_impression_low_ctr_queries() if gsc_configured else []
-    gsc_widget_2 = get_pages_near_page_one() if gsc_configured else []
-    gsc_widget_3 = get_zero_impression_posts() if gsc_configured else []
-    gsc_summary = gsc_client.get_weekly_site_summary() if gsc_configured else {}
-    gsc_stat_cards = get_gsc_stat_cards(gsc_summary)
-
-    # ── News scan (for pipeline health) ────────────────────────────────────
-    news_scan = job_history.get("news_scan", {})
-
-    # ── Pipeline health ───────────────────────────────────────────────────────
-    pipeline_health = get_pipeline_health(
-        news_scan_status=news_scan.get("status", "unknown"),
-        job_history=job_history,
-    )
-
-    # ── Content queue depth ───────────────────────────────────────────────────
-    queue_depth = get_content_queue_depth()
-
-    # ── API billing costs ─────────────────────────────────────────────────────
-    api_costs = get_api_costs()
-
-    # ── GEO monitor summary ───────────────────────────────────────────────────
-    geo_summary = get_geo_monitor_summary(days=30)
-
-    context = {
+    context: dict[str, Any] = {
         "request": request,
         "active_page": "dashboard",
-        "now": datetime.now(tz=__import__('zoneinfo', fromlist=['ZoneInfo']).ZoneInfo('Asia/Kolkata')).strftime("%Y-%m-%d %H:%M IST"),
-        # Content counters
-        "pending_blogs": pending_blogs,
-        "pending_linkedin": pending_linkedin,
-        "pending_newsletters": pending_newsletters,
+        "now": datetime.now(tz=IST).strftime("%Y-%m-%d %H:%M IST"),
+        "pending_blogs": sum(1 for i in pending if i["type"] == "blog"),
+        "pending_linkedin": sum(1 for i in pending if i["type"] == "linkedin"),
+        "pending_newsletters": sum(1 for i in pending if i["type"] == "newsletter"),
         "total_pending": len(pending),
-        "total_approved": total_approved,
-        "total_rejected": total_rejected,
-        "total_published": total_published,
-        "total_flagged": total_flagged,
+        "total_approved": sum(1 for i in items if i["approved"] is True),
+        "total_rejected": sum(1 for i in items if i["status"] == "rejected"),
+        "total_published": sum(1 for i in items if i["status"] == "published"),
+        "total_flagged": sum(1 for i in items if i["status"] == "flagged"),
         "this_week_count": len(this_week),
         "this_week_items": this_week[:5],
-        # GSC
-        "gsc_configured": gsc_configured,
-        "gsc_widget_1": gsc_widget_1,
-        "gsc_widget_2": gsc_widget_2,
-        "gsc_widget_3": gsc_widget_3,
-        "gsc_summary": gsc_summary,
-        "gsc_stat_cards": gsc_stat_cards,
-        # Pipeline health
-        "pipeline_health": pipeline_health,
-        # Queue depth
-        "queue_depth": queue_depth,
-        # API billing
-        "api_costs": api_costs,
-        # GEO monitor
-        "geo_summary": geo_summary,
-        # Legacy
         "latest_news": job_history.get("latest_news", []),
-        "activity_log": activity_log,
+        "activity_log": _load_activity_log(),
+        **_gsc_context(),
     }
+
+    # Every widget below is optional: a failure degrades one card, not the page.
+    try:
+        from src.ui.dashboard_data import (
+            get_api_costs,
+            get_content_queue_depth,
+            get_geo_monitor_summary,
+            get_pipeline_health,
+        )
+
+        context["pipeline_health"] = get_pipeline_health(
+            news_scan_status=job_history.get("news_scan", {}).get("status", "unknown"),
+            job_history=job_history,
+        )
+        context["queue_depth"] = get_content_queue_depth()
+        context["api_costs"] = get_api_costs()
+        context["geo_summary"] = get_geo_monitor_summary(days=30)
+    except Exception as exc:
+        log.warning("dashboard_widgets_failed", error=str(exc))
+        context.setdefault("pipeline_health", {})
+        context.setdefault("queue_depth", {})
+        context.setdefault("api_costs", {})
+        context.setdefault("geo_summary", {})
+
     return templates.TemplateResponse("dashboard.html", context)

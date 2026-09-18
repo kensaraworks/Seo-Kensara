@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DPDPA Enforcement Tracker India — KensaraAI</title>
-  <meta name="description" content="Live database of Indian data privacy enforcement actions — DPDPA, CERT-In, IT Act 43A, RBI data localisation. 23+ cases tracked. Maintained by KensaraAI." />
+  <meta name="description" content="Live database of Indian data privacy enforcement actions — DPDPA, CERT-In, IT Act 43A, RBI data localisation. {{ stats.total_all_sections }} verified cases tracked. Maintained by KensaraAI." />
   <meta name="keywords" content="DPDPA enforcement India, data protection penalty India, CERT-In enforcement, IT Act 43A cases, India data privacy fines, Data Protection Board India" />
   <meta property="og:title" content="DPDPA Enforcement Tracker — India Data Privacy Cases" />
   <meta property="og:description" content="Comprehensive database of Indian data privacy enforcement actions. Covers DPDPA, IT Act Section 43A, CERT-In, RBI, CCI, and GDPR fines affecting Indian companies." />
-  <meta property="og:url" content="https://kensara.in/dpdpa-enforcement-tracker" />
+  <meta property="og:url" content="{{ canonical_url }}" />
   <meta property="og:type" content="website" />
-  <link rel="canonical" href="https://kensara.in/dpdpa-enforcement-tracker" />
+  <link rel="canonical" href="{{ canonical_url }}" />
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -20,10 +20,10 @@
   {
     "@context": "https://schema.org",
     "@type": "Dataset",
-    "@id": "https://kensara.in/dpdpa-enforcement-tracker#dataset",
+    "@id": "{{ canonical_url }}#dataset",
     "name": "DPDPA Enforcement Actions India — KensaraAI Tracker",
     "description": "Comprehensive database of Indian data privacy enforcement actions. Covers DPDPA 2023 proceedings, IT Act Section 43A/72A cases, CERT-In breach notification enforcement, RBI data localisation actions, and international GDPR fines affecting Indian companies. Maintained by KensaraAI.",
-    "url": "https://kensara.in/dpdpa-enforcement-tracker",
+    "url": "{{ canonical_url }}",
     "creator": {
       "@type": "Organization",
       "@id": "https://kensara.in/#organization",
@@ -36,7 +36,7 @@
       "name": "KensaraAI",
       "url": "https://kensara.in"
     },
-    "dateModified": "2026-06-08",
+    "dateModified": "{{ metadata.last_updated }}",
     "datePublished": "2024-01-01",
     "license": "https://creativecommons.org/licenses/by/4.0/",
     "isAccessibleForFree": true,
@@ -46,7 +46,7 @@
     "distribution": {
       "@type": "DataDownload",
       "encodingFormat": "application/json",
-      "contentUrl": "https://kensara.in/dpdpa-enforcement-tracker/data.json"
+      "contentUrl": "{{ dataset_url }}"
     }
   }
   </script>
@@ -78,7 +78,7 @@
     "itemListElement": [
       {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://kensara.in"},
       {"@type": "ListItem", "position": 2, "name": "DPDPA Resources", "item": "https://kensara.in/dpdpa"},
-      {"@type": "ListItem", "position": 3, "name": "DPDPA Enforcement Tracker", "item": "https://kensara.in/dpdpa-enforcement-tracker"}
+      {"@type": "ListItem", "position": 3, "name": "DPDPA Enforcement Tracker", "item": "{{ canonical_url }}"}
     ]
   }
   </script>

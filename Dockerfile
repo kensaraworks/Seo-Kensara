@@ -6,8 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# A long-running container runs the full pipeline, so it needs both files.
+COPY requirements.txt requirements-pipeline.txt ./
+RUN pip install --no-cache-dir -r requirements-pipeline.txt
 
 COPY . .
 

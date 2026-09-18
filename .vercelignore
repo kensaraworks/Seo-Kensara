@@ -1,0 +1,23 @@
+# Keep the serverless bundle small and free of anything unpublishable.
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+*.log
+.env
+.env.*
+!.env.example
+tests/
+docs/
+drafts/
+.planning/
+assets/
+convert_docs.py
+Dockerfile
+render.yaml
+start.sh
+run_ui.py
+requirements-pipeline.txt
+requirements-dev.txt

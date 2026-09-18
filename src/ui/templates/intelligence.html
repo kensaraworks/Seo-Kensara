@@ -160,7 +160,10 @@
       <div>
         <div class="section-title" style="margin:0;">Enforcement Tracker</div>
         <div style="font-size:11px;color:#64748b;margin-top:3px;">
-          {{ enforcement_meta.total_count }} total entries · updated {{ enforcement_meta.last_updated }}
+          {{ enforcement_meta.total_count }} published · updated {{ enforcement_meta.last_updated }}
+          {% if enforcement_meta.pending_review %}
+          · <span style="color:#b45309;font-weight:600;">{{ enforcement_meta.pending_review }} awaiting review</span>
+          {% endif %}
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
@@ -211,6 +214,61 @@
     <div style="font-size:12px;color:#6b7280;">No enforcement actions yet. Regulatory poll runs every 4h.</div>
     {% endif %}
   </div>
+
+  {# ----------------------------------------------------------------------
+     REVIEW QUEUE — auto-detected leads, held back from the public page
+  ---------------------------------------------------------------------- #}
+  {% if enforcement_review_queue %}
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div>
+        <div class="section-title" style="margin:0;">Enforcement Review Queue</div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px;">
+          {{ enforcement_review_count }} auto-detected lead{{ '' if enforcement_review_count == 1 else 's' }}.
+          These stay off the public tracker until every field is verified.
+        </div>
+      </div>
+    </div>
+
+    <div style="overflow:auto;max-height:420px;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Date</th>
+            <th>Authority</th>
+            <th>Detected headline</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for action in enforcement_review_queue %}
+          <tr>
+            <td style="font-size:11px;font-family:monospace;white-space:nowrap;">{{ action.id }}</td>
+            <td style="font-size:11px;color:#374151;white-space:nowrap;">{{ action.date }}</td>
+            <td style="font-size:11px;color:#374151;">{{ action.authority }}</td>
+            <td style="font-size:11px;color:#4b5563;max-width:420px;">
+              {{ action.summary[:180] }}{% if action.summary|length > 180 %}…{% endif %}
+            </td>
+            <td style="font-size:11px;white-space:nowrap;">
+              {% if action.source_url %}
+              <a href="{{ action.source_url }}" target="_blank" rel="noopener" style="color:#4f46e5;text-decoration:none;">Open ↗</a>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="font-size:11px;color:#64748b;margin-top:10px;">
+      To publish one: correct its fields in the Supabase
+      <code>enforcement_actions</code> table (or POST to
+      <code>/api/v1/enforcement/verify/&lt;id&gt;</code>) and clear
+      <code>needs_review</code>.
+    </div>
+  </div>
+  {% endif %}
 
 </div>
 {% endblock %}

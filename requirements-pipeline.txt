@@ -1,0 +1,33 @@
+# ── Content pipeline ──────────────────────────────────────────────────────────
+# Everything the scraping / generation / analytics agents need. Install on a
+# long-running host (Docker, Render, a worker box) on top of requirements.txt:
+#
+#     pip install -r requirements.txt -r requirements-pipeline.txt
+#
+# Deliberately NOT installed on Vercel: these pull ~150MB of wheels that the
+# serverless web app never touches, and a 60s function cannot run a news scan
+# or a blog generation anyway.
+
+-r requirements.txt
+
+# LLM providers
+openai==1.35.0          # also used for NVIDIA NIM (OpenAI-compatible endpoint)
+groq==0.9.0
+
+# Research / search
+tavily-python==0.3.3
+pytrends==4.9.2
+
+# RSS + HTML scraping
+feedparser==6.0.11
+beautifulsoup4==4.12.3
+curl-cffi==0.7.0b4
+
+# Async file I/O
+aiofiles==23.2.1
+
+# Google Search Console / Indexing API
+google-api-python-client==2.131.0
+google-auth==2.29.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0

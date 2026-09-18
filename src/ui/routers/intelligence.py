@@ -15,13 +15,17 @@ from src.ui.dashboard_data import (
     get_trending_keywords,
     get_recent_enforcement_actions,
     get_enforcement_tracker_meta,
+    get_enforcement_review_queue,
 )
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+router = APIRouter(tags=["intelligence"])
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
-_CACHE = Path("drafts/.cache")
+from src.config import settings
+
+_CACHE = Path(settings.content_output_dir) / ".cache"
 
 
 def _load_job_history() -> dict:
@@ -42,6 +46,7 @@ async def intelligence_page(request: Request) -> HTMLResponse:
     trending_keywords = get_trending_keywords(limit=20)
     enforcement_actions = get_recent_enforcement_actions(limit=20)
     enforcement_meta = get_enforcement_tracker_meta()
+    enforcement_review_queue = get_enforcement_review_queue(limit=25)
 
     return templates.TemplateResponse(
         "intelligence.html",
@@ -58,54 +63,7 @@ async def intelligence_page(request: Request) -> HTMLResponse:
             "trending_keywords": trending_keywords,
             "enforcement_actions": enforcement_actions,
             "enforcement_meta": enforcement_meta,
+            "enforcement_review_queue": enforcement_review_queue,
+            "enforcement_review_count": len(enforcement_review_queue),
         },
     )
-
-
-@router.get("/enforcement-tracker.html", response_class=HTMLResponse)
-async def enforcement_tracker_static_override(request: Request):
-    """Dynamic override route to keep static/enforcement-tracker.html up-to-date in real-time."""
-    from src.agents.enforcement_tracker import _load_tracker
-    from datetime import datetime
-    
-    try:
-        data = _load_tracker()
-        dt_str = data.get("metadata", {}).get("last_updated", "")
-        try:
-            dt = datetime.strptime(dt_str, "%Y-%m-%d")
-            formatted_date = dt.strftime("%d %B %Y")
-        except Exception:
-            formatted_date = dt_str
-            
-        stats = data.get("statistics", {})
-        
-        # Compute dynamic sector counts
-        by_sector = stats.get("by_sector", {})
-        social_tech = by_sector.get("Social Media / Tech", 0) + by_sector.get("Regulatory", 0)
-        healthcare = by_sector.get("Insurance / Healthcare", 0) + by_sector.get("Healthcare", 0)
-        fintech = by_sector.get("Payments / Fintech", 0) + by_sector.get("Fintech", 0) + by_sector.get("Banking / Payments", 0)
-        gov = by_sector.get("Government", 0)
-        
-        other_sectors = sum(v for k, v in by_sector.items() if k not in ("Social Media / Tech", "Regulatory", "Insurance / Healthcare", "Healthcare", "Payments / Fintech", "Fintech", "Banking / Payments", "Government"))
-        
-        return templates.TemplateResponse(
-            "enforcement_tracker.html",
-            {
-                "request": request,
-                "enforcement_actions": data.get("enforcement_actions", []),
-                "cert_in_enforcement": data.get("cert_in_enforcement", []),
-                "pre_dpdpa_actions": data.get("pre_dpdpa_actions", []),
-                "stats": stats,
-                "last_updated_formatted": formatted_date,
-                "social_tech_count": social_tech,
-                "healthcare_count": healthcare,
-                "fintech_count": fintech,
-                "gov_count": gov,
-                "other_sectors_count": other_sectors,
-            }
-        )
-    except Exception as exc:
-        # Fallback to serving the static file directly if DB fails
-        from fastapi.responses import FileResponse
-        return FileResponse("static/enforcement-tracker.html")
-

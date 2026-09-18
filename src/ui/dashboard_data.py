@@ -186,48 +186,63 @@ def get_trending_keywords(limit: int = 8) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def get_recent_enforcement_actions(limit: int = 5) -> list[dict]:
-    """Return the most recent enforcement actions from the tracker JSON."""
-    data = _read_json(_ENFORCEMENT_TRACKER)
-    if not data:
+    """Most recent *verified* enforcement actions, for the dashboard widgets."""
+    from src.store import enforcement_store as store
+
+    try:
+        actions = store.all_actions(store.public_snapshot())
+    except Exception as exc:
+        log.warning("enforcement_actions_widget_failed", error=str(exc))
         return []
 
-    all_actions: list[dict] = []
-    for section in ("enforcement_actions", "cert_in_enforcement", "pre_dpdpa_actions"):
-        for action in data.get(section, []):
-            all_actions.append(
-                {
-                    "id": action.get("id", ""),
-                    "date": action.get("date", ""),
-                    "authority": action.get("authority", ""),
-                    "company": action.get("company", ""),
-                    "violation_type": action.get("violation_type", ""),
-                    "penalty_amount": action.get("penalty_amount", ""),
-                    "summary": action.get("summary", "")[:160],
-                    "source_url": action.get("source_url", ""),
-                    "outcome": action.get("outcome", ""),
-                    "section": section,
-                }
-            )
+    # Legislative and industry-wide rows are context, not enforcement events.
+    skip = {"N/A \u2014 Legislative", "N/A \u2014 Draft Rules", "Industry-wide mandate"}
+    rows = [
+        {
+            "id": a.get("id", ""),
+            "date": a.get("date", ""),
+            "authority": a.get("authority", ""),
+            "company": a.get("company", ""),
+            "violation_type": a.get("violation_type", ""),
+            "penalty_amount": a.get("penalty_amount", ""),
+            "summary": (a.get("summary") or "")[:160],
+            "source_url": a.get("source_url", ""),
+            "outcome": a.get("outcome", ""),
+            "section": a.get("section", ""),
+        }
+        for a in actions
+        if a.get("company") not in skip
+    ]
+    return rows[:limit]
 
-    # Sort by date descending, skip legislative/N/A entries
-    actionable = [a for a in all_actions if a["company"] not in ("N/A — Legislative", "N/A — Draft Rules", "Industry-wide mandate")]
-    actionable.sort(key=lambda x: x["date"], reverse=True)
-    return actionable[:limit]
+
+def get_enforcement_review_queue(limit: int = 25) -> list[dict]:
+    """Auto-detected leads awaiting verification before they can be published."""
+    from src.store import enforcement_store as store
+
+    try:
+        return store.review_queue(limit=limit)
+    except Exception as exc:
+        log.warning("enforcement_review_queue_widget_failed", error=str(exc))
+        return []
 
 
 def get_enforcement_tracker_meta() -> dict:
-    """Return tracker metadata (last updated, total count)."""
-    data = _read_json(_ENFORCEMENT_TRACKER)
-    if not data:
-        return {"last_updated": "Never", "total_count": 0}
-    meta = data.get("metadata", {})
-    total = sum(
-        len(data.get(s, []))
-        for s in ("enforcement_actions", "cert_in_enforcement", "pre_dpdpa_actions")
-    )
+    """Tracker metadata: last updated, published count, pending review count."""
+    from src.store import enforcement_store as store
+
+    try:
+        snapshot = store.load_snapshot()
+        public = store.public_snapshot(snapshot)
+    except Exception as exc:
+        log.warning("enforcement_meta_widget_failed", error=str(exc))
+        return {"last_updated": "Never", "total_count": 0, "pending_review": 0, "source": "unavailable"}
+
     return {
-        "last_updated": meta.get("last_updated", "Unknown"),
-        "total_count": total,
+        "last_updated": snapshot.get("metadata", {}).get("last_updated") or "Unknown",
+        "total_count": public["statistics"]["total_all_sections"],
+        "pending_review": public["statistics"].get("pending_review", 0),
+        "source": snapshot.get("source", "unknown"),
     }
 
 

@@ -1,6 +1,7 @@
 #!/bin/bash
-# Start background cron scheduler
-python -m src.main &
+set -euo pipefail
 
-# Start FastAPI UI
-python -m uvicorn src.ui.app:app --host 0.0.0.0 --port ${PORT:-8000}
+# The FastAPI app owns the scheduler (src/ui/scheduler.py) on long-running
+# hosts, so this starts one process, not two. Running `python -m src.main`
+# alongside it would register the same jobs a second time.
+exec python -m uvicorn src.ui.app:app --host 0.0.0.0 --port "${PORT:-8000}"

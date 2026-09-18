@@ -18,6 +18,7 @@ from src.analytics.search_console import gsc_client
 log = structlog.get_logger()
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+router = APIRouter(prefix="/schedule", tags=["schedule"])
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 

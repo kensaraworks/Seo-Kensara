@@ -28,6 +28,7 @@ from src.ui.dashboard_data import (
 )
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+router = APIRouter(tags=["strategy"])
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 

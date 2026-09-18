@@ -1,59 +1,28 @@
-# Core
+# ── Web runtime ───────────────────────────────────────────────────────────────
+# This is what Vercel installs for the serverless function. Keep it small: the
+# bundle has a hard size limit and every package here is paid for on each cold
+# start. Scraping / LLM / Google SDKs live in requirements-pipeline.txt and are
+# imported lazily, so the web app runs fine without them.
+
 fastapi==0.115.0
 uvicorn[standard]==0.30.0
 pydantic==2.7.0
 pydantic-settings==2.3.0
 
-# Azure OpenAI (MANDATORY — not openai from Anthropic)
-openai==1.35.0  # Azure OpenAI client
-
-# NVIDIA NIM — primary blog/content generation (OpenAI-compatible)
-# Uses openai package above with custom base_url
-
-# Groq — fallback LLM (llama-3.3-70b-versatile)
-groq==0.9.0
-
-# Scheduling
-apscheduler==3.10.4
-
-# HTTP
+# HTTP — also the Supabase PostgREST transport and the Tavily client
 httpx==0.27.0
-curl-cffi==0.7.0b4
 
-# RSS scraping
-feedparser==6.0.11
-beautifulsoup4==4.12.3
-lxml==5.2.2
-
-# Logging (NEVER use stdlib logging)
-structlog==24.2.0
-
-# Templating
+# Templating for the dashboard and the public enforcement tracker
 jinja2==3.1.4
 
-# File I/O (async)
-aiofiles==23.2.1
+# Structured logging (never stdlib logging)
+structlog==24.2.0
 
-# Multipart (FastAPI file uploads)
+# FastAPI form / file uploads
 python-multipart==0.0.9
 
-# Testing
-pytest==8.2.0
-pytest-asyncio==0.23.7
-pytest-mock==3.14.0
-
-# Dev tools
+# .env loading
 python-dotenv==1.0.1
 
-pytrends==4.9.2
-tavily-python==0.3.3
-
-# Google Search Console / Indexing API
-google-api-python-client==2.131.0
-google-auth==2.29.0
-google-auth-httplib2==0.2.0
-google-auth-oauthlib==1.2.0
-
-# Base Numerical
-numpy==1.26.4
-
+# In-process scheduler (long-running deployments only; Vercel uses Vercel Cron)
+apscheduler==3.10.4

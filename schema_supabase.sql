@@ -182,21 +182,42 @@ CREATE TABLE IF NOT EXISTS public.content_performance (
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 15. Privacy Enforcement Tracker & Court Judgments
-CREATE TABLE IF NOT EXISTS public.enforcement_tracker (
-    id           TEXT PRIMARY KEY,
-    case_title   TEXT NOT NULL,
-    authority    TEXT,
-    fine_amount  NUMERIC(12, 2) DEFAULT 0,
-    penalty_inr  TEXT,
-    date         TEXT,
-    summary      TEXT,
-    legal_basis  TEXT,
-    sector       TEXT,
-    status       TEXT,
-    url          TEXT,
-    updated_at   TIMESTAMPTZ DEFAULT NOW()
+-- 15. Privacy Enforcement Tracker (public DPDPA tracker — source of truth)
+-- Columns mirror the tracker JSON exactly, so a row round-trips through the
+-- app without a mapping layer. Rows discovered by the Tavily sweep land here
+-- with needs_review = TRUE and are NOT published until a human clears them.
+--
+-- Superseded the earlier `enforcement_tracker` table, whose columns
+-- (case_title / fine_amount / legal_basis / url) never matched the data the
+-- pipeline produces. That table is intentionally left in place rather than
+-- dropped; migrate anything you still need out of it, then drop it by hand.
+CREATE TABLE IF NOT EXISTS public.enforcement_actions (
+    id             TEXT PRIMARY KEY,
+    section        TEXT NOT NULL DEFAULT 'pre_dpdpa_actions',
+    date           TEXT,
+    authority      TEXT,
+    company        TEXT,
+    sector         TEXT,
+    violation_type TEXT,
+    dpdpa_section  TEXT,
+    summary        TEXT,
+    penalty_amount TEXT,
+    outcome        TEXT,
+    source_url     TEXT,
+    notes          TEXT,
+    auto_detected  BOOLEAN NOT NULL DEFAULT FALSE,
+    needs_review   BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence     TEXT NOT NULL DEFAULT 'high',
+    detected_at    TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_enf_section ON public.enforcement_actions(section);
+CREATE INDEX IF NOT EXISTS idx_enf_date ON public.enforcement_actions(date DESC);
+CREATE INDEX IF NOT EXISTS idx_enf_needs_review ON public.enforcement_actions(needs_review);
+-- One row per source. NULLs are allowed through (a curated row may have no URL)
+-- because Postgres does not treat NULLs as equal in a unique index.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_enf_source_url ON public.enforcement_actions(source_url);
 
 -- 16. Seen Articles Deduplication
 CREATE TABLE IF NOT EXISTS public.seen_articles (
@@ -243,3 +264,15 @@ CREATE TABLE IF NOT EXISTS public.rag_embeddings (
     created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rag_collection ON public.rag_embeddings(collection_key);
+
+-- ============================================================================
+-- Row Level Security
+-- ============================================================================
+-- The pipeline talks to PostgREST with the service_role key, which bypasses
+-- RLS. Enabling RLS without a permissive policy therefore keeps the tables
+-- closed to the anon/public key while leaving the app unaffected — the public
+-- enforcement tracker is served by the app, never straight from PostgREST.
+ALTER TABLE public.enforcement_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.platform_stats      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_history         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_log        ENABLE ROW LEVEL SECURITY;

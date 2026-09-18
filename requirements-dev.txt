@@ -1,0 +1,8 @@
+# ── Development & test ────────────────────────────────────────────────────────
+#     pip install -r requirements-dev.txt
+
+-r requirements-pipeline.txt
+
+pytest==8.2.0
+pytest-asyncio==0.23.7
+pytest-mock==3.14.0

@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 log = structlog.get_logger()
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+router = APIRouter(prefix="/context", tags=["context"])
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 

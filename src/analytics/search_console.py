@@ -8,9 +8,23 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+# The Google API client is an optional, heavy dependency. Importing it lazily
+# keeps it off the serverless cold-start path and lets the app run without it;
+# `SearchConsoleClient.is_configured()` reports False when it is absent.
+try:  # pragma: no cover - exercised by the absence of the package
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+
+    GOOGLE_API_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    service_account = None  # type: ignore[assignment]
+    build = None  # type: ignore[assignment]
+
+    class HttpError(Exception):  # type: ignore[no-redef]
+        """Stand-in so `except HttpError` stays valid without the SDK."""
+
+    GOOGLE_API_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +87,14 @@ class SearchConsoleClient:
         """
         if self._configured is not None:
             return self._configured
+
+        if not GOOGLE_API_AVAILABLE:
+            logger.warning(
+                "GSC not configured: google-api-python-client is not installed. "
+                "Install the pipeline requirements to enable Search Console sync."
+            )
+            self._configured = False
+            return False
 
         if not self._site_url:
             logger.warning(
