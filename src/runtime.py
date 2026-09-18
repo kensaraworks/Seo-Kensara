@@ -19,6 +19,21 @@ def is_serverless() -> bool:
     return bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
 
 
+def deployment_info() -> dict:
+    """Which build is actually serving, from Vercel's build-time env vars.
+
+    Without this there is no way to tell a stale deployment from a fresh one
+    when both return the same error.
+    """
+    sha = os.getenv("VERCEL_GIT_COMMIT_SHA", "")
+    return {
+        "commit": sha[:12] or "unknown",
+        "branch": os.getenv("VERCEL_GIT_COMMIT_REF", "") or "unknown",
+        "env": os.getenv("VERCEL_ENV", "") or "local",
+        "region": os.getenv("VERCEL_REGION", "") or "local",
+    }
+
+
 def platform_name() -> str:
     if os.getenv("VERCEL"):
         return "vercel"

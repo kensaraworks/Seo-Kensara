@@ -17,6 +17,7 @@ import hmac
 import importlib
 import json
 import re
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +30,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.runtime import IST, APP_VERSION, is_serverless, now_ist, now_ist_label, platform_name
+from src.runtime import (
+    IST,
+    APP_VERSION,
+    deployment_info,
+    is_serverless,
+    now_ist,
+    now_ist_label,
+    platform_name,
+)
 
 log = structlog.get_logger()
 
@@ -208,6 +217,8 @@ async def healthz() -> JSONResponse:
         "version": APP_VERSION,
         "platform": platform_name(),
         "serverless": is_serverless(),
+        "deployment": deployment_info(),
+        "python": sys.version.split()[0],
         "router_errors": ROUTER_ERRORS,
     }
 

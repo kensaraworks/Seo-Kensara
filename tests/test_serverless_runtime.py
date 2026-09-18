@@ -169,3 +169,85 @@ def test_vercel_config_is_coherent():
     # Hobby plan allows at most a daily cron; weekly is within that.
     assert cron["schedule"].split()[2] == "*"
     assert config["functions"]["api/index.py"]["maxDuration"] <= 60
+
+
+# ── Bootstrap resilience ──────────────────────────────────────────────────────
+
+def test_entrypoints_never_raise_when_the_app_cannot_be_imported(tmp_path):
+    """A raising entry point gives FUNCTION_INVOCATION_FAILED, which tells the
+    operator nothing. Copy the entry points somewhere with no `src` package and
+    check they still produce a usable ASGI app."""
+    import shutil
+
+    (tmp_path / "api").mkdir()
+    shutil.copy(ROOT / "app.py", tmp_path / "app.py")
+    shutil.copy(ROOT / "api" / "index.py", tmp_path / "api" / "index.py")
+
+    script = (
+        "import sys; sys.path.insert(0, '.');"
+        "from fastapi.testclient import TestClient;"
+        "import app as e;"
+        "c = TestClient(e.app, raise_server_exceptions=False);"
+        "r = c.get('/healthz');"
+        "print(r.status_code, r.json()['status']);"
+        "print('ModuleNotFoundError' in r.json().get('traceback', ''))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={**__import__("os").environ, "DEBUG_STARTUP": "1"},
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    status_line, traceback_line = result.stdout.strip().splitlines()[-2:]
+    assert status_line == "503 bootstrap_failed"
+    assert traceback_line == "True", "the real cause must reach DEBUG_STARTUP output"
+
+
+def test_bootstrap_traceback_is_hidden_without_debug_startup(tmp_path):
+    import shutil
+
+    (tmp_path / "api").mkdir()
+    shutil.copy(ROOT / "app.py", tmp_path / "app.py")
+    shutil.copy(ROOT / "api" / "index.py", tmp_path / "api" / "index.py")
+
+    script = (
+        "import sys; sys.path.insert(0, '.');"
+        "from fastapi.testclient import TestClient;"
+        "import app as e;"
+        "c = TestClient(e.app, raise_server_exceptions=False);"
+        "print('traceback' in c.get('/healthz').json())"
+    )
+    env = {k: v for k, v in __import__("os").environ.items() if k != "DEBUG_STARTUP"}
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env, timeout=120
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert result.stdout.strip().splitlines()[-1] == "False"
+
+
+def test_healthz_reports_the_running_deployment(monkeypatch):
+    """Distinguishes a stale deployment from a fresh one when both misbehave."""
+    monkeypatch.setenv("VERCEL_GIT_COMMIT_SHA", "0123456789abcdef")
+    monkeypatch.setenv("VERCEL_GIT_COMMIT_REF", "main")
+    monkeypatch.setenv("VERCEL_ENV", "production")
+
+    from src.runtime import deployment_info
+
+    info = deployment_info()
+    assert info["commit"] == "0123456789ab"
+    assert info["branch"] == "main"
+    assert info["env"] == "production"
+
+
+def test_vercel_config_bundles_the_application_files():
+    """Import tracing does not pick up Jinja templates or the seed JSON."""
+    import json
+
+    include = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))["functions"][
+        "api/index.py"
+    ]["includeFiles"]
+    for required in ("src/**", "data/**", "static/**"):
+        assert required in include, f"{required} missing from includeFiles"
