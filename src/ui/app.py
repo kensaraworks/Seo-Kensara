@@ -83,14 +83,34 @@ def is_public_path(path: str) -> bool:
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Cookie gate for the dashboard. Public SEO routes pass straight through."""
+    """Cookie gate for the dashboard. Public SEO routes pass straight through.
+
+    An unauthenticated request is answered with the login page in place, rather
+    than redirected to it. Redirecting cost an extra round trip, and — as a
+    deploy demonstrated — could loop forever if anything upstream rewrote the
+    path: the redirect target came back mangled, failed the same check, and
+    redirected again. Serving the page in place cannot loop, whatever the path.
+    """
 
     async def dispatch(self, request: Request, call_next):
         if is_public_path(request.url.path):
             return await call_next(request)
-        if request.cookies.get(_AUTH_COOKIE) != _VALID_TOKEN:
+
+        if request.cookies.get(_AUTH_COOKIE) == _VALID_TOKEN:
+            return await call_next(request)
+
+        if request.method != "GET":
+            return JSONResponse({"ok": False, "error": "authentication required"}, status_code=401)
+
+        try:
+            response = templates.TemplateResponse(
+                "auth.html", {"request": request}, status_code=401
+            )
+        except Exception as exc:  # template missing from the bundle
+            log.error("auth_page_render_failed", error=str(exc))
             return RedirectResponse(url="/auth/login", status_code=302)
-        return await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -210,9 +230,11 @@ _include_routers(app)
 # ── Health & SEO endpoints ────────────────────────────────────────────────────
 
 @app.get("/healthz")
-async def healthz() -> JSONResponse:
+async def healthz(request: Request) -> JSONResponse:
     """Liveness plus a readable summary of what is and is not wired up."""
     payload: dict[str, Any] = {
+        "seen_path": request.url.path,
+        "seen_host": request.headers.get("host", ""),
         "status": "ok" if not ROUTER_ERRORS else "degraded",
         "version": APP_VERSION,
         "platform": platform_name(),

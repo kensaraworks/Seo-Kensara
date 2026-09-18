@@ -159,16 +159,23 @@ def test_recovery_app_serves_only_verified_rows():
 
 
 def test_vercel_config_is_coherent():
+    """The entry point is the root app.py, matching Vercel's own detection.
+
+    A catch-all rewrite to /api/index used to sit alongside it; the two
+    competed and every request came back 302, looping between the dashboard and
+    the login page.
+    """
     import json
 
     config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
-    assert config["rewrites"][0]["destination"] == "/api/index"
-    assert (ROOT / "api" / "index.py").exists()
+    assert "rewrites" not in config, "a catch-all rewrite competes with Vercel's routing"
+    assert "app.py" in config["functions"]
+    assert (ROOT / "app.py").exists()
     cron = config["crons"][0]
     assert cron["path"] == "/api/cron/enforcement-tracker"
     # Hobby plan allows at most a daily cron; weekly is within that.
     assert cron["schedule"].split()[2] == "*"
-    assert config["functions"]["api/index.py"]["maxDuration"] <= 60
+    assert config["functions"]["app.py"]["maxDuration"] <= 60
 
 
 # ── Bootstrap resilience ──────────────────────────────────────────────────────
@@ -247,7 +254,7 @@ def test_vercel_config_bundles_the_application_files():
     import json
 
     include = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))["functions"][
-        "api/index.py"
+        "app.py"
     ]["includeFiles"]
     for required in ("src/**", "data/**", "static/**"):
         assert required in include, f"{required} missing from includeFiles"

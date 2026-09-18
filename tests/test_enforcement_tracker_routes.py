@@ -49,11 +49,31 @@ def test_public_paths_do_not_require_auth(client, path):
 
 
 def test_dashboard_still_requires_auth(client):
-    assert client.get("/", follow_redirects=False).status_code == 302
+    """Unauthenticated GETs are answered with the login page in place (401).
+
+    They used to redirect, which looped forever on Vercel when the path came
+    back rewritten: the redirect target failed the same check and redirected
+    again. Serving the page in place cannot loop.
+    """
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 401
+    assert "auth_key" in response.text
+
+
+def test_authentication_never_redirects(client):
+    for path in ("/", "/queue/", "/schedule/", "/intelligence/", "/api/index"):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code not in (301, 302, 303, 307, 308), f"{path} redirected"
 
 
 def test_review_queue_requires_auth(client):
-    assert client.get("/api/v1/enforcement/review-queue", follow_redirects=False).status_code == 302
+    assert client.get("/api/v1/enforcement/review-queue", follow_redirects=False).status_code == 401
+
+
+def test_unauthenticated_writes_are_rejected_not_rendered(client):
+    response = client.post("/api/v1/enforcement/verify/ANY", json={}, follow_redirects=False)
+    assert response.status_code == 401
+    assert response.json()["ok"] is False
 
 
 # ── Page contents ─────────────────────────────────────────────────────────────
