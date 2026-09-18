@@ -359,3 +359,62 @@ def test_a_malformed_env_var_degrades_instead_of_killing_the_app():
     assert value == "90", "the declared default should be restored"
     assert int(error_count) == 1, "the discarded variable must be reported"
     assert routes_ok == "True"
+
+
+# ── Credential visibility ─────────────────────────────────────────────────────
+
+def test_get_secret_prefers_settings_then_environment(monkeypatch):
+    from src.config import get_secret, settings
+
+    monkeypatch.setattr(settings, "groq_api_key", "from-settings", raising=False)
+    assert get_secret("GROQ_API_KEY") == "from-settings"
+
+    monkeypatch.setattr(settings, "groq_api_key", "", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "from-env")
+    assert get_secret("GROQ_API_KEY") == "from-env"
+
+
+def test_placeholder_values_count_as_unset(monkeypatch):
+    """Copying .env.example into a dashboard sets variables to 'replace_me'."""
+    from src.config import get_secret, settings
+
+    monkeypatch.setattr(settings, "tavily_api_key", "", raising=False)
+    for placeholder in ("replace_me", "  ", "CHANGEME", "your_key_here"):
+        monkeypatch.setenv("TAVILY_API_KEY", placeholder)
+        assert get_secret("TAVILY_API_KEY") == "", f"{placeholder!r} should read as unset"
+
+
+def test_credential_report_separates_missing_from_placeholder(monkeypatch):
+    from src.config import credential_report, settings
+
+    monkeypatch.setattr(settings, "groq_api_key", "", raising=False)
+    monkeypatch.setattr(settings, "nvidia_api_key", "", raising=False)
+    monkeypatch.setattr(settings, "tavily_api_key", "", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-a-real-looking-value")
+    monkeypatch.setenv("NVIDIA_API_KEY", "replace_me")
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+
+    report = credential_report()
+    assert report["GROQ_API_KEY"]["state"] == "configured"
+    assert report["NVIDIA_API_KEY"]["state"] == "placeholder"
+    assert report["TAVILY_API_KEY"]["state"] == "missing"
+    assert report["TAVILY_API_KEY"]["in_process_env"] is False
+
+
+def test_credential_report_never_returns_a_value(monkeypatch):
+    import json
+
+    from src.config import credential_report, settings
+
+    monkeypatch.setattr(settings, "groq_api_key", "", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "super-secret-do-not-leak")
+    assert "super-secret-do-not-leak" not in json.dumps(credential_report())
+
+
+def test_health_endpoints_do_not_read_credentials_directly():
+    """They used to use os.getenv() while the rest of the app used settings, so
+    a key could be live for one and missing for the other."""
+    source = (ROOT / "src/ui/routers/api.py").read_text(encoding="utf-8")
+    assert 'os.getenv("GROQ_API_KEY")' not in source
+    assert 'os.getenv("NVIDIA_API_KEY")' not in source
+    assert 'get_secret("GROQ_API_KEY")' in source

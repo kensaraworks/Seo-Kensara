@@ -108,7 +108,7 @@ async def trigger_generation(req: GenerateRequest, background_tasks: BackgroundT
 @router.get("/health/llms")
 async def check_llm_health():
     """Diagnose all integration connections (NVIDIA, Groq, Tavily, Serper, Perplexity, AllToken, Gemini, Supabase, WordPress, Mailchimp, GSC)."""
-    from src.config import settings
+    from src.config import get_secret, settings
     from src.analytics.search_console import gsc_client
     import base64
     import asyncio
@@ -116,7 +116,7 @@ async def check_llm_health():
     results = {}
     
     async def check_nvidia(client):
-        key = os.getenv("NVIDIA_API_KEY")
+        key = get_secret("NVIDIA_API_KEY")
         if not key or key == "replace_me":
             return "nvidia", {"status": "missing_key", "latency_ms": 0}
         try:
@@ -130,7 +130,7 @@ async def check_llm_health():
             return "nvidia", {"status": "error", "message": str(e), "latency_ms": 0}
 
     async def check_groq(client):
-        key = os.getenv("GROQ_API_KEY")
+        key = get_secret("GROQ_API_KEY")
         if not key or key == "replace_me":
             return "groq", {"status": "missing_key", "latency_ms": 0}
         try:
@@ -144,7 +144,7 @@ async def check_llm_health():
             return "groq", {"status": "error", "message": str(e), "latency_ms": 0}
 
     async def check_tavily(client):
-        key = os.getenv("TAVILY_API_KEY")
+        key = get_secret("TAVILY_API_KEY")
         if not key or key == "replace_me":
             return "tavily", {"status": "missing_key", "latency_ms": 0}
         try:
@@ -158,7 +158,7 @@ async def check_llm_health():
             return "tavily", {"status": "error", "message": str(e), "latency_ms": 0}
 
     async def check_serper(client):
-        key = os.getenv("SERPER_API_KEY")
+        key = get_secret("SERPER_API_KEY")
         if not key or key == "replace_me":
             return "serper", {"status": "missing_key", "latency_ms": 0}
         try:
@@ -176,7 +176,7 @@ async def check_llm_health():
             return "serper", {"status": "error", "message": str(e), "latency_ms": 0}
 
     async def check_perplexity(client):
-        key = os.getenv("PERPLEXITY_API_KEY")
+        key = get_secret("PERPLEXITY_API_KEY")
         if not key or key == "replace_me":
             return "perplexity", {"status": "missing_key", "latency_ms": 0}
         try:
@@ -194,7 +194,7 @@ async def check_llm_health():
             return "perplexity", {"status": "error", "message": str(e), "latency_ms": 0}
 
     async def check_alltoken(client):
-        key = os.getenv("ALLTOKEN_API_KEY")
+        key = get_secret("ALLTOKEN_API_KEY")
         if not key or key == "replace_me":
             return "alltoken", {"status": "missing_key", "latency_ms": 0}
         try:
@@ -208,7 +208,7 @@ async def check_llm_health():
             return "alltoken", {"status": "error", "message": str(e), "latency_ms": 0}
 
     async def check_gemini(client):
-        key = os.getenv("GEMINI_API_KEY")
+        key = get_secret("GEMINI_API_KEY")
         if not key or key == "replace_me":
             return "gemini", {"status": "missing_key", "latency_ms": 0}
         try:
@@ -314,7 +314,20 @@ async def check_llm_health():
         outputs = await asyncio.gather(*tasks)
         for key, val in outputs:
             results[key] = val
-            
+
+    # Credential visibility, so "No API key" can be told apart from "the running
+    # deployment predates the variable". Reports names and states only, never a
+    # value. Keys are underscore-prefixed so they cannot collide with a service.
+    from src.config import credential_report
+
+    report = credential_report()
+    results["_env"] = report
+    results["_env_summary"] = {
+        "configured": sum(1 for v in report.values() if v["state"] == "configured"),
+        "placeholder": sum(1 for v in report.values() if v["state"] == "placeholder"),
+        "missing": sum(1 for v in report.values() if v["state"] == "missing"),
+        "total": len(report),
+    }
     return results
 
 @router.get("/health/full")
@@ -333,7 +346,7 @@ async def check_full_health(request: Request):
     - AllToken
     - GSC
     """
-    from src.config import settings
+    from src.config import get_secret, settings
     from src.analytics.search_console import gsc_client
     import sqlite3
     from pathlib import Path
@@ -365,14 +378,14 @@ async def check_full_health(request: Request):
         return bool(value and value.strip() and value.strip() != "replace_me")
 
     required_keys = {
-        "groq": os.getenv("GROQ_API_KEY"),
-        "nvidia": os.getenv("NVIDIA_API_KEY"),
-        "tavily": os.getenv("TAVILY_API_KEY"),
-        "serper": os.getenv("SERPER_API_KEY"),
+        "groq": get_secret("GROQ_API_KEY"),
+        "nvidia": get_secret("NVIDIA_API_KEY"),
+        "tavily": get_secret("TAVILY_API_KEY"),
+        "serper": get_secret("SERPER_API_KEY"),
     }
     optional_keys = {
-        "perplexity": os.getenv("PERPLEXITY_API_KEY"),
-        "alltoken": os.getenv("ALLTOKEN_API_KEY"),
+        "perplexity": get_secret("PERPLEXITY_API_KEY"),
+        "alltoken": get_secret("ALLTOKEN_API_KEY"),
     }
 
     results = {}

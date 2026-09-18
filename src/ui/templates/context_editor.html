@@ -24,6 +24,8 @@
       </div>
 
       <!-- API health cards -->
+      <div id="env-diagnosis" style="display:none;margin-bottom:14px;padding:12px 14px;border-radius:8px;font-size:12px;line-height:1.55;"></div>
+
       <div id="health-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:12px;margin-bottom:18px;">
         <div class="stat-card" style="padding:14px;">
           <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;">NVIDIA NIM API</div>
@@ -273,12 +275,61 @@
 // ── Health check ──────────────────────────────────────────────────────────────
 const apiList = ['nvidia','groq','tavily','serper','supabase','wordpress','mailchimp','gsc','gemini','perplexity','alltoken'];
 
+// Which environment variable powers each card, so a missing one can be named.
+const ENV_FOR = {
+  nvidia: 'NVIDIA_API_KEY', groq: 'GROQ_API_KEY', tavily: 'TAVILY_API_KEY',
+  serper: 'SERPER_API_KEY', supabase: 'SUPABASE_SERVICE_KEY',
+  wordpress: 'WORDPRESS_APP_PASSWORD', mailchimp: 'MAILCHIMP_API_KEY',
+  gsc: 'GSC_SERVICE_ACCOUNT_FILE', gemini: 'GEMINI_API_KEY',
+  perplexity: 'PERPLEXITY_API_KEY', alltoken: 'ALLTOKEN_API_KEY',
+};
+
+// Distinguishes "never set" from "set, but this deployment predates it" —
+// on Vercel a variable only reaches a function deployed after it was saved.
+function renderEnvDiagnosis(data) {
+  const box = document.getElementById('env-diagnosis');
+  const env = data._env, summary = data._env_summary;
+  if (!box || !env || !summary) return;
+
+  const absent = Object.entries(env).filter(([, v]) => !v.in_process_env);
+  const placeholders = Object.entries(env).filter(([, v]) => v.state === 'placeholder');
+
+  if (summary.configured === summary.total) {
+    box.style.display = 'none';
+    return;
+  }
+
+  let html = '';
+  if (absent.length === summary.total) {
+    html = '<strong>None of the environment variables reached this deployment.</strong><br>' +
+      'On Vercel, variables only apply to deployments created after they were saved. ' +
+      'Redeploy (Deployments &rarr; latest &rarr; Redeploy), and check they are enabled for the ' +
+      '<em>Production</em> environment.';
+  } else if (absent.length) {
+    html = '<strong>' + absent.length + ' variable(s) are not present in this deployment:</strong> ' +
+      absent.map(([k]) => k).join(', ') + '.<br>Add them in Vercel and redeploy.';
+  }
+  if (placeholders.length) {
+    html += (html ? '<br><br>' : '') +
+      '<strong>' + placeholders.length + ' variable(s) still hold a placeholder</strong> (e.g. "replace_me"): ' +
+      placeholders.map(([k]) => k).join(', ') + '.';
+  }
+
+  if (!html) { box.style.display = 'none'; return; }
+  box.style.background = '#fffbeb';
+  box.style.border = '1px solid #fcd34d';
+  box.style.color = '#92400e';
+  box.innerHTML = html;
+  box.style.display = 'block';
+}
+
 function checkHealth() {
   apiList.forEach(id => {
     document.getElementById('health-'+id).innerHTML =
       '<span class="loading-text" style="width:80px;height:12px;display:block;"></span>';
   });
   fetch('/api/v1/health/llms').then(r=>r.json()).then(data=>{
+    renderEnvDiagnosis(data);
     apiList.forEach(id => {
       const d = data[id];
       const el = document.getElementById('health-'+id);
@@ -286,7 +337,12 @@ function checkHealth() {
       if (d.status === 'ok') {
         el.innerHTML = dot('green') + label('Operational · '+d.latency_ms+'ms','#16a34a');
       } else if (d.status === 'missing_key') {
-        el.innerHTML = dot('amber') + label('No API key','#d97706');
+        const envName = ENV_FOR[id];
+        const info = (data._env || {})[envName];
+        let note = 'No API key';
+        if (info && info.state === 'placeholder') note = 'Placeholder value';
+        el.innerHTML = dot('amber') + label(note, '#d97706') +
+          (envName ? '<span style="color:#94a3b8;font-size:10px;margin-left:6px;">' + envName + '</span>' : '');
       } else {
         el.innerHTML = dot('red') + label(d.message||'Error','#dc2626');
       }

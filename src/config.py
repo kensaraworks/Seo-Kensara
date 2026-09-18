@@ -179,3 +179,75 @@ except Exception:
 
 
 
+
+
+# ── Credential resolution ────────────────────────────────────────────────────
+# Values that mean "not configured". Copying .env.example into a dashboard is a
+# common way to end up with a variable that is set but useless.
+PLACEHOLDER_SECRETS = {"", "replace_me", "replace-me", "changeme", "your_key_here", "none", "null", "todo"}
+
+#: Every credential the app reads, as ENV_VAR -> what it powers. Used for the
+#: diagnostics report, so the list of things to check is never out of date.
+CREDENTIAL_ENV_VARS = {
+    "GROQ_API_KEY": "Groq — primary LLM",
+    "NVIDIA_API_KEY": "NVIDIA NIM — blog/long-form generation",
+    "TAVILY_API_KEY": "Tavily — news and enforcement search",
+    "SERPER_API_KEY": "Serper — SERP and rank tracking",
+    "PERPLEXITY_API_KEY": "Perplexity — GEO citation monitoring",
+    "GEMINI_API_KEY": "Gemini — GEO citation monitoring",
+    "ALLTOKEN_API_KEY": "AllToken — GPT/Claude GEO monitoring",
+    "SUPABASE_URL": "Supabase — database",
+    "SUPABASE_SERVICE_KEY": "Supabase — database",
+    "WORDPRESS_USER": "WordPress — publishing",
+    "WORDPRESS_APP_PASSWORD": "WordPress — publishing",
+    "MAILCHIMP_API_KEY": "Mailchimp — newsletter",
+    "MAILCHIMP_LIST_ID": "Mailchimp — newsletter",
+    "CRON_SECRET": "Vercel Cron — guards the tracker refresh",
+}
+
+
+def _clean_secret(value: str | None) -> str:
+    text = (value or "").strip()
+    return "" if text.lower() in PLACEHOLDER_SECRETS else text
+
+
+def get_secret(env_name: str) -> str:
+    """Resolve a credential from settings first, then the raw environment.
+
+    The health checks used to read os.getenv() directly while the rest of the
+    app read `settings`, so a credential could be live for one and missing for
+    the other. Placeholder values are treated as absent.
+    """
+    import os as _os
+
+    value = _clean_secret(getattr(settings, env_name.lower(), ""))
+    return value or _clean_secret(_os.getenv(env_name))
+
+
+def credential_report() -> dict:
+    """Which credentials the process can actually see. Never returns a value.
+
+    Answers the question a dashboard cannot: is the variable missing because it
+    was never set, or because the running deployment predates it? On Vercel,
+    environment variables only reach a function that was deployed after they
+    were saved.
+    """
+    import os as _os
+
+    report = {}
+    for env_name, purpose in CREDENTIAL_ENV_VARS.items():
+        raw_env = _os.getenv(env_name)
+        resolved = get_secret(env_name)
+        if resolved:
+            state = "configured"
+        elif raw_env is not None and not _clean_secret(raw_env):
+            state = "placeholder"  # set, but to something like "replace_me"
+        else:
+            state = "missing"
+        report[env_name] = {
+            "state": state,
+            "purpose": purpose,
+            "in_process_env": raw_env is not None,
+            "length": len(resolved),
+        }
+    return report
