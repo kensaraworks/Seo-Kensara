@@ -59,8 +59,28 @@ It is idempotent, so re-running it is safe.
 
 ### 2. Set environment variables
 
-In **Vercel → Project → Settings → Environment Variables** (see
-[`.env.example`](.env.example) for the full list):
+Generate the file to import, fill in the values, check it, then import:
+
+```bash
+python scripts/make_env_template.py     # writes .env.vercel.example
+cp .env.vercel.example .env.vercel      # gitignored — fill in your values
+python scripts/check_env.py .env.vercel
+```
+
+Then **Vercel → Settings → Environment Variables → Import .env**, and
+**redeploy**: variables only reach deployments created *after* they were saved,
+so saving them against a running deployment changes nothing.
+
+The checker catches the mistakes a dashboard cannot show you — a typo'd name, a
+quoted value, a leftover `replace_me`, or a blank value for a field with a real
+default (pydantic treats "set to empty" as a value, so a blank
+`NVIDIA_MODEL_BLOG` overrides the model name rather than falling back to it).
+
+`Context & Setup` reports the same thing from the running deployment: each
+credential reads `configured`, `placeholder` or `missing`, so "No API key" can
+be told apart from "this deployment predates the variable".
+
+The variables that matter most:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
