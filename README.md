@@ -227,7 +227,7 @@ cp .env.example .env                       # then fill in your keys
 uvicorn src.ui.app:app --reload --port 8000
 ```
 
-- Dashboard: <http://localhost:8000> (auth key `COO@Kensara`)
+- Dashboard: <http://localhost:8000>
 - Tracker: <http://localhost:8000/enforcement-tracker.html>
 - Health: <http://localhost:8000/healthz>
 
